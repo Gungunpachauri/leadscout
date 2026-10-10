@@ -47,7 +47,9 @@ export async function getCached(domain: string): Promise<Enrichment | null> {
     try {
       const r = await client!.execute({ sql: "SELECT data FROM enrichments WHERE domain = ?", args: [domain] });
       if (r.rows[0]) return fresh(JSON.parse(String(r.rows[0].data)) as Enrichment);
-    } catch { /* fall through to memory */ }
+    } catch {
+      /* fall through to memory */
+    }
   }
   return fresh(memory.get(domain));
 }

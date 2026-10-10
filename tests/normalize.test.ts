@@ -38,7 +38,10 @@ describe("dedupeInputs", () => {
 
 describe("guessColumns", () => {
   it("finds SaaSquatch-style headers", () => {
-    expect(guessColumns(["Company Name", "Website", "Industry"])).toEqual({ domainCol: "Website", nameCol: "Company Name" });
+    expect(guessColumns(["Company Name", "Website", "Industry"])).toEqual({
+      domainCol: "Website",
+      nameCol: "Company Name",
+    });
     expect(guessColumns(["business", "URL"])).toEqual({ domainCol: "URL", nameCol: "business" });
     expect(guessColumns(["Account", "Email"])).toEqual({ domainCol: "Email", nameCol: "Account" });
   });
@@ -47,7 +50,10 @@ describe("guessColumns", () => {
 describe("parseImport", () => {
   it("reads a CSV with a recognised header", () => {
     const rows = parseImport('Company Name,Website\n"Acme, Inc.",acme.com\nBeta,https://beta.io/');
-    expect(rows).toEqual([{ value: "acme.com", name: "Acme, Inc." }, { value: "https://beta.io/", name: "Beta" }]);
+    expect(rows).toEqual([
+      { value: "acme.com", name: "Acme, Inc." },
+      { value: "https://beta.io/", name: "Beta" },
+    ]);
   });
 
   it("treats a plain list as data, including a first line that contains 'site'", () => {

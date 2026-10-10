@@ -1,6 +1,23 @@
 "use client";
 
-import { Check, Download, Info, ListFilter, Mail, Phone, Plus, RotateCcw, RotateCw, Search, ShieldCheck, SlidersHorizontal, Sparkles, Target, Trash2, X } from "lucide-react";
+import {
+  Check,
+  Download,
+  Info,
+  ListFilter,
+  Mail,
+  Phone,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Target,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuyBoxSheet } from "@/components/BuyBoxSheet";
 import { Composer } from "@/components/Composer";
@@ -35,7 +52,8 @@ function load(): Persisted | null {
 /** Turn API errors into something a user can act on. */
 function friendlyError(raw: string | undefined, status: number): string {
   if (raw === "Site unreachable") return "Couldn't reach the site (offline, blocking bots, or too slow).";
-  if (raw === "Homepage disallowed by robots.txt") return "The site's robots.txt asks crawlers not to visit, so it was skipped.";
+  if (raw === "Homepage disallowed by robots.txt")
+    return "The site's robots.txt asks crawlers not to visit, so it was skipped.";
   if (raw === "Homepage is not HTML") return "The homepage isn't a web page (e.g. a file download).";
   if (raw === "Not a valid domain") return "Not a valid domain.";
   if (status === 429) return "Too many requests. Wait a moment and retry.";
@@ -63,7 +81,10 @@ export default function Dashboard() {
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [aiInfo, setAiInfo] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
+  const [aiInfo, setAiInfo] = useState<{ provider: string | null; model: string | null }>({
+    provider: null,
+    model: null,
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const [buyBoxOpen, setBuyBoxOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -87,19 +108,25 @@ export default function Dashboard() {
   useEffect(() => {
     const saved = load();
     if (saved) {
-      setLeads(saved.leads.map((l): Lead => {
-        if (l.status === "running") return { ...l, status: "queued" };
-        // Data saved by an older version lacks evidence; re-enrich it.
-        if (l.data && l.data.version !== ENRICHMENT_VERSION) return { domain: l.domain, inputName: l.inputName, status: "queued" };
-        return l;
-      }));
+      setLeads(
+        saved.leads.map((l): Lead => {
+          if (l.status === "running") return { ...l, status: "queued" };
+          // Data saved by an older version lacks evidence; re-enrich it.
+          if (l.data && l.data.version !== ENRICHMENT_VERSION)
+            return { domain: l.domain, inputName: l.inputName, status: "queued" };
+          return l;
+        }),
+      );
       setIcp({ ...DEFAULT_ICP, ...saved.icp, prefer: { ...DEFAULT_ICP.prefer, ...saved.icp?.prefer } });
       setSender(saved.sender ?? {});
     }
     setHydrated(true);
     fetch("/api/brief")
       .then((r) => r.json())
-      .then((j) => { setAiEnabled(Boolean(j.enabled)); setAiInfo({ provider: j.provider ?? null, model: j.model ?? null }); })
+      .then((j) => {
+        setAiEnabled(Boolean(j.enabled));
+        setAiInfo({ provider: j.provider ?? null, model: j.model ?? null });
+      })
       .catch(() => setAiEnabled(false));
   }, []);
 
@@ -107,7 +134,9 @@ export default function Dashboard() {
     if (!hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, icp, sender }));
-    } catch { /* storage full or blocked; the session still works */ }
+    } catch {
+      /* storage full or blocked; the session still works */
+    }
   }, [leads, icp, sender, hydrated]);
 
   const patch = useCallback((domain: string, p: Partial<Lead>) => {
@@ -119,22 +148,25 @@ export default function Dashboard() {
   leadsRef.current = leads;
   const claimed = useRef(new Set<string>());
 
-  const enrichOne = useCallback(async (domain: string, refresh = false) => {
-    patch(domain, { status: "running", error: undefined });
-    try {
-      const res = await fetch("/api/enrich", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ domain, refresh }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(friendlyError(json.error, res.status));
-      patch(domain, { status: "done", data: json.data, cached: json.cached, ...(refresh ? { ai: undefined } : {}) });
-    } catch (e) {
-      const msg = e instanceof TypeError ? "Network error. Check your connection and retry." : (e as Error).message;
-      patch(domain, { status: "error", error: msg });
-    }
-  }, [patch]);
+  const enrichOne = useCallback(
+    async (domain: string, refresh = false) => {
+      patch(domain, { status: "running", error: undefined });
+      try {
+        const res = await fetch("/api/enrich", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ domain, refresh }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(friendlyError(json.error, res.status));
+        patch(domain, { status: "done", data: json.data, cached: json.cached, ...(refresh ? { ai: undefined } : {}) });
+      } catch (e) {
+        const msg = e instanceof TypeError ? "Network error. Check your connection and retry." : (e as Error).message;
+        patch(domain, { status: "error", error: msg });
+      }
+    },
+    [patch],
+  );
 
   const pump = useCallback(() => {
     while (activeWorkers.current < CONCURRENCY) {
@@ -214,7 +246,13 @@ export default function Dashboard() {
     const filtered = leads
       .map((lead) => ({ lead, score: scores.get(lead.domain) ?? null }))
       .filter(({ lead, score }) => {
-        if (q && !`${lead.domain} ${lead.data?.name ?? ""} ${lead.inputName ?? ""} ${lead.data?.industry ?? ""} ${lead.data?.location ?? ""}`.toLowerCase().includes(q)) return false;
+        if (
+          q &&
+          !`${lead.domain} ${lead.data?.name ?? ""} ${lead.inputName ?? ""} ${lead.data?.industry ?? ""} ${lead.data?.location ?? ""}`
+            .toLowerCase()
+            .includes(q)
+        )
+          return false;
         if (!score) return !filtering;
         if (tier && score.tier !== tier) return false;
         if (score.total < minScore) return false;
@@ -224,11 +262,16 @@ export default function Dashboard() {
         return true;
       });
     const val = (r: Row) =>
-      sort.key === "score" ? (r.score?.total ?? -1)
-        : sort.key === "age" ? (r.lead.data?.foundedYear ? nowYear - r.lead.data.foundedYear : -1)
+      sort.key === "score"
+        ? (r.score?.total ?? -1)
+        : sort.key === "age"
+          ? r.lead.data?.foundedYear
+            ? nowYear - r.lead.data.foundedYear
+            : -1
           : (r.lead.data?.name ?? r.lead.domain).toLowerCase();
     return filtered.sort((a, b) => {
-      const va = val(a), vb = val(b);
+      const va = val(a),
+        vb = val(b);
       return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir;
     });
   }, [leads, scores, search, tier, needEmail, needPhone, industry, minScore, sort]);
@@ -236,12 +279,20 @@ export default function Dashboard() {
   // Industries actually present in the list, for the filter menu.
   const industries = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of leads) if (l.data) m.set(l.data.industry ?? "Unknown", (m.get(l.data.industry ?? "Unknown") ?? 0) + 1);
+    for (const l of leads)
+      if (l.data) m.set(l.data.industry ?? "Unknown", (m.get(l.data.industry ?? "Unknown") ?? 0) + 1);
     return [...m].sort((a, b) => (a[0] === "Unknown" ? 1 : b[0] === "Unknown" ? -1 : b[1] - a[1]));
   }, [leads]);
   const activeFilters = (industry ? 1 : 0) + (minScore ? 1 : 0);
   const anyFilter = Boolean(tier || needEmail || needPhone || industry || minScore || search.trim());
-  const resetView = () => { setTier(null); setNeedEmail(false); setNeedPhone(false); setIndustry(null); setMinScore(0); setSearch(""); };
+  const resetView = () => {
+    setTier(null);
+    setNeedEmail(false);
+    setNeedPhone(false);
+    setIndustry(null);
+    setMinScore(0);
+    setSearch("");
+  };
 
   // Metrics are computed over *scored* leads only (in-progress and failed rows are excluded),
   // using the same scores, and therefore the same buy-box, as the table.
@@ -250,7 +301,9 @@ export default function Dashboard() {
   const scoredLeads = leads.filter((l) => scores.has(l.domain));
   const scoredList = scoredLeads.map((l) => scores.get(l.domain)!);
   const avg = scoredList.length ? Math.round(scoredList.reduce((s, x) => s + x.total, 0) / scoredList.length) : null;
-  const reachable = scoredLeads.filter((l) => l.data!.emails.some((e) => e.status === "mx-ok") || l.data!.phones.length).length;
+  const reachable = scoredLeads.filter(
+    (l) => l.data!.emails.some((e) => e.status === "mx-ok") || l.data!.phones.length,
+  ).length;
   const exportable = rows.filter((r): r is { lead: Lead; score: LeadScore } => r.score !== null);
   const selectedLead = selected ? leads.find((l) => l.domain === selected) : undefined;
   const icpCount = icp.industries.length + icp.keywords.length + Object.values(icp.prefer ?? {}).filter(Boolean).length;
@@ -276,7 +329,8 @@ export default function Dashboard() {
     },
   ];
   const progress = leads.length ? (leads.length - pending) / leads.length : 1;
-  const onSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "name" ? 1 : -1 }));
+  const onSort = (key: SortKey) =>
+    setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "name" ? 1 : -1 }));
   const empty = hydrated && leads.length === 0;
 
   return (
@@ -297,17 +351,31 @@ export default function Dashboard() {
                     : "Scores are rule-based and deterministic; no AI is used to rank leads. Optional AI briefs are off because no GEMINI_API_KEY or ANTHROPIC_API_KEY is set. Template emails still work."
                 }
               >
-                <button type="button" className="mr-1 hidden items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink sm:flex">
+                <button
+                  type="button"
+                  className="mr-1 hidden items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink sm:flex"
+                >
                   <span className={cx("h-1.5 w-1.5 rounded-full", aiEnabled ? "bg-tier-a" : "bg-tier-d")} />
-                  {aiEnabled ? `AI briefs on · ${aiInfo.provider === "gemini" ? "Gemini" : "Claude"}` : "Rules-based · AI off"}
+                  {aiEnabled
+                    ? `AI briefs on · ${aiInfo.provider === "gemini" ? "Gemini" : "Claude"}`
+                    : "Rules-based · AI off"}
                   <Info size={12} />
                 </button>
               </Tip>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setBuyBoxOpen(true)} title="Investment criteria used to score leads">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setBuyBoxOpen(true)}
+              title="Investment criteria used to score leads"
+            >
               <SlidersHorizontal size={15} strokeWidth={1.75} />
               Buy-box
-              {icpCount > 0 && <span className="ml-0.5 rounded bg-ink px-1.5 text-[11px] font-semibold leading-[18px] text-bg">{icpCount}</span>}
+              {icpCount > 0 && (
+                <span className="ml-0.5 rounded bg-ink px-1.5 text-[11px] font-semibold leading-[18px] text-bg">
+                  {icpCount}
+                </span>
+              )}
             </Button>
             {!empty && (
               <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} label="Add leads">
@@ -318,7 +386,10 @@ export default function Dashboard() {
         </div>
         {pending > 0 && (
           <div className="absolute inset-x-0 -bottom-px h-[2px] overflow-hidden">
-            <div className="h-full bg-ink transition-all duration-500 ease-out" style={{ width: `${Math.max(4, progress * 100)}%` }} />
+            <div
+              className="h-full bg-ink transition-all duration-500 ease-out"
+              style={{ width: `${Math.max(4, progress * 100)}%` }}
+            />
           </div>
         )}
       </header>
@@ -341,7 +412,8 @@ export default function Dashboard() {
                 <span className="text-muted">worth buying.</span>
               </h1>
               <p className="mx-auto mt-5 max-w-md text-[15px] leading-relaxed text-ink-2">
-                Drop in a SaaSquatch export. LeadScout crawls each site, verifies contacts and ranks every lead by acquisition fit.
+                Drop in a SaaSquatch export. LeadScout crawls each site, verifies contacts and ranks every lead by
+                acquisition fit.
               </p>
             </div>
             <div className="anim-rise mt-10">
@@ -383,12 +455,17 @@ export default function Dashboard() {
                   <div key={m.label}>
                     <dt>
                       <Tip content={m.tip} wide align="right" side="bottom">
-                        <button type="button" className="inline-flex items-center gap-1 rounded text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
+                        >
                           {m.label} <Info size={11} />
                         </button>
                       </Tip>
                     </dt>
-                    <dd className="mt-0.5 text-[26px] font-semibold leading-8 tabular-nums tracking-[-0.03em]">{m.value}</dd>
+                    <dd className="mt-0.5 text-[26px] font-semibold leading-8 tabular-nums tracking-[-0.03em]">
+                      {m.value}
+                    </dd>
                     <dd className="text-[11.5px] text-muted">{m.sub}</dd>
                   </div>
                 ))}
@@ -397,25 +474,48 @@ export default function Dashboard() {
 
             {/* Toolbar */}
             <div className="mt-8 flex flex-wrap items-center gap-2">
-              <div role="group" aria-label="Filter by tier" className="scrollbar-none flex items-center gap-0.5 overflow-x-auto rounded-lg bg-subtle p-0.5">
+              <div
+                role="group"
+                aria-label="Filter by tier"
+                className="scrollbar-none flex items-center gap-0.5 overflow-x-auto rounded-lg bg-subtle p-0.5"
+              >
                 {([null, "A", "B", "C", "D"] as const).map((t) => (
                   <button
                     key={t ?? "all"}
                     onClick={() => setTier(t)}
                     aria-pressed={tier === t}
-                    title={t ? `Tier ${t} · ${TIER_LABEL[t]}: ${TIER_RANGE[t]}` : "All imported leads, including in-progress and failed"}
+                    title={
+                      t
+                        ? `Tier ${t} · ${TIER_LABEL[t]}: ${TIER_RANGE[t]}`
+                        : "All imported leads, including in-progress and failed"
+                    }
                     className={cx(
                       "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-all focus-visible:outline-2 focus-visible:outline-ink",
                       tier === t ? "bg-surface font-medium text-ink shadow-soft" : "text-muted hover:text-ink",
                     )}
                   >
-                    {t ? <><TierDot tier={t} />{t}</> : "All"}
+                    {t ? (
+                      <>
+                        <TierDot tier={t} />
+                        {t}
+                      </>
+                    ) : (
+                      "All"
+                    )}
                     <span className="tabular-nums text-muted">{t ? tierCounts[t] : leads.length}</span>
                   </button>
                 ))}
               </div>
-              <Toggle on={needEmail} onClick={() => setNeedEmail((v) => !v)} title="Only leads with an email on a mail-ready (MX) domain"><Mail size={13} strokeWidth={1.75} /> Email</Toggle>
-              <Toggle on={needPhone} onClick={() => setNeedPhone((v) => !v)} title="Only leads with a phone number"><Phone size={13} strokeWidth={1.75} /> Phone</Toggle>
+              <Toggle
+                on={needEmail}
+                onClick={() => setNeedEmail((v) => !v)}
+                title="Only leads with an email on a mail-ready (MX) domain"
+              >
+                <Mail size={13} strokeWidth={1.75} /> Email
+              </Toggle>
+              <Toggle on={needPhone} onClick={() => setNeedPhone((v) => !v)} title="Only leads with a phone number">
+                <Phone size={13} strokeWidth={1.75} /> Phone
+              </Toggle>
               <Menu
                 align="left"
                 trigger={(open, toggle) => (
@@ -430,7 +530,16 @@ export default function Dashboard() {
                       <span className="text-[12px] font-medium text-muted">Minimum score</span>
                       <span className="font-mono text-[12px] tabular-nums">{minScore}</span>
                     </div>
-                    <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(+e.target.value)} className="mt-1.5 w-full" aria-label="Minimum score" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={90}
+                      step={5}
+                      value={minScore}
+                      onChange={(e) => setMinScore(+e.target.value)}
+                      className="mt-1.5 w-full"
+                      aria-label="Minimum score"
+                    />
                     <div className="mt-3 px-0.5 text-[12px] font-medium text-muted">Industry</div>
                     <div className="mt-1 max-h-56 overflow-y-auto">
                       {[[null, leads.filter((l) => l.data).length] as const, ...industries].map(([ind, n]) => (
@@ -449,7 +558,13 @@ export default function Dashboard() {
                       ))}
                     </div>
                     {activeFilters > 0 && (
-                      <button onClick={() => { setIndustry(null); setMinScore(0); }} className="mt-2 w-full rounded-md py-1.5 text-[12px] text-muted hover:bg-hover hover:text-ink">
+                      <button
+                        onClick={() => {
+                          setIndustry(null);
+                          setMinScore(0);
+                        }}
+                        className="mt-2 w-full rounded-md py-1.5 text-[12px] text-muted hover:bg-hover hover:text-ink"
+                      >
                         Clear filters
                       </button>
                     )}
@@ -463,7 +578,12 @@ export default function Dashboard() {
                 </Button>
               )}
               {failed.length > 0 && pending === 0 && (
-                <Button variant="ghost" size="sm" onClick={() => failed.forEach((l) => patch(l.domain, { status: "queued", error: undefined }))} title="Queue every failed lead again">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => failed.forEach((l) => patch(l.domain, { status: "queued", error: undefined }))}
+                  title="Queue every failed lead again"
+                >
                   <RotateCw size={13} /> Retry {failed.length} failed
                 </Button>
               )}
@@ -471,7 +591,10 @@ export default function Dashboard() {
               <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
                 <label className="relative flex-1 sm:flex-none">
                   <span className="sr-only">Search leads</span>
-                  <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+                  />
                   <input
                     type="search"
                     value={search}
@@ -481,23 +604,55 @@ export default function Dashboard() {
                     className="h-8 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-7 text-[13px] outline-none transition placeholder:text-muted/80 focus:border-ink sm:w-60 [&::-webkit-search-cancel-button]:hidden"
                   />
                   {search && (
-                    <button onClick={() => setSearch("")} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-ink">
+                    <button
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-ink"
+                    >
                       <X size={13} />
                     </button>
                   )}
                 </label>
                 <Menu
                   trigger={(open, toggle) => (
-                    <Button size="sm" onClick={toggle} disabled={!exportable.length} expanded={open} title={exportable.length ? "Export the leads in the current view" : "No scored leads in the current view"}>
+                    <Button
+                      size="sm"
+                      onClick={toggle}
+                      disabled={!exportable.length}
+                      expanded={open}
+                      title={
+                        exportable.length
+                          ? "Export the leads in the current view"
+                          : "No scored leads in the current view"
+                      }
+                    >
                       <Download size={14} strokeWidth={1.75} /> Export
                     </Button>
                   )}
                 >
                   {(close) => (
                     <>
-                      <div className="px-2.5 pb-1 pt-1.5 text-[11px] text-muted">{exportable.length} leads in current view</div>
-                      <MenuItem onClick={() => { exportCsv(exportable); close(); }} hint=".csv">Spreadsheet</MenuItem>
-                      <MenuItem onClick={() => { exportHubspot(exportable); close(); }} hint=".csv">HubSpot import</MenuItem>
+                      <div className="px-2.5 pb-1 pt-1.5 text-[11px] text-muted">
+                        {exportable.length} leads in current view
+                      </div>
+                      <MenuItem
+                        onClick={() => {
+                          exportCsv(exportable);
+                          close();
+                        }}
+                        hint=".csv"
+                      >
+                        Spreadsheet
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => {
+                          exportHubspot(exportable);
+                          close();
+                        }}
+                        hint=".csv"
+                      >
+                        HubSpot import
+                      </MenuItem>
                     </>
                   )}
                 </Menu>
@@ -511,19 +666,38 @@ export default function Dashboard() {
                 <div className="px-6 py-20 text-center">
                   <p className="text-[14px] font-medium">No leads match this view</p>
                   <p className="mt-1 text-[13px] text-muted">
-                    {[tier && `tier ${tier}`, industry, minScore && `score ≥ ${minScore}`, needEmail && "has email", needPhone && "has phone", search.trim() && `“${search.trim()}”`].filter(Boolean).join(" · ")}
+                    {[
+                      tier && `tier ${tier}`,
+                      industry,
+                      minScore && `score ≥ ${minScore}`,
+                      needEmail && "has email",
+                      needPhone && "has phone",
+                      search.trim() && `“${search.trim()}”`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
-                  <Button size="sm" className="mt-4" onClick={resetView}><RotateCcw size={13} /> Clear filters</Button>
+                  <Button size="sm" className="mt-4" onClick={resetView}>
+                    <RotateCcw size={13} /> Clear filters
+                  </Button>
                 </div>
               ) : (
-                <LeadTable rows={rows} sort={sort} onSort={onSort} onSelect={setSelected} selected={selected} onRetry={(d) => enrichOne(d)} />
+                <LeadTable
+                  rows={rows}
+                  sort={sort}
+                  onSort={onSort}
+                  onSelect={setSelected}
+                  selected={selected}
+                  onRetry={(d) => enrichOne(d)}
+                />
               )}
             </div>
 
             <div className="mt-4 flex flex-wrap items-start justify-between gap-x-6 gap-y-2 text-[12px] leading-5 text-muted">
               <p>
-                Score = reachability {SCORING.reach.max} + acquisition fit {SCORING.fit.max} + buy-box {SCORING.icp.max} + data confidence {SCORING.confidence.max}.
-                {" "}Tiers: A {T.A}+ · B {T.B}–{T.A - 1} · C {T.C}–{T.B - 1} · D &lt;{T.C}. Heuristic fit, not a prediction of a sale.
+                Score = reachability {SCORING.reach.max} + acquisition fit {SCORING.fit.max} + buy-box {SCORING.icp.max}{" "}
+                + data confidence {SCORING.confidence.max}. Tiers: A {T.A}+ · B {T.B}–{T.A - 1} · C {T.C}–{T.B - 1} · D
+                &lt;{T.C}. Heuristic fit, not a prediction of a sale.
               </p>
               <button
                 className="inline-flex shrink-0 items-center gap-1 rounded transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-ink"
@@ -547,7 +721,14 @@ export default function Dashboard() {
         <Composer onSubmitText={importText} onFile={onFile} onSample={loadSample} autoFocus compact />
       </Modal>
 
-      <BuyBoxSheet open={buyBoxOpen} onClose={() => setBuyBoxOpen(false)} icp={icp} setIcp={setIcp} sender={sender} setSender={setSender} />
+      <BuyBoxSheet
+        open={buyBoxOpen}
+        onClose={() => setBuyBoxOpen(false)}
+        icp={icp}
+        setIcp={setIcp}
+        sender={sender}
+        setSender={setSender}
+      />
 
       {selectedLead?.data && scores.get(selectedLead.domain) && (
         <LeadDrawer

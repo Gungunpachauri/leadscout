@@ -5,7 +5,11 @@ import { useRef, useState } from "react";
 import { Button, Kbd, cx } from "./ui";
 
 export function Composer({
-  onSubmitText, onFile, onSample, autoFocus, compact,
+  onSubmitText,
+  onFile,
+  onSample,
+  autoFocus,
+  compact,
 }: {
   onSubmitText: (text: string) => void;
   onFile: (f: File) => void;
@@ -26,7 +30,10 @@ export function Composer({
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => {
         e.preventDefault();
@@ -44,9 +51,14 @@ export function Composer({
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            submit();
+          }
         }}
-        placeholder={"Paste domains, URLs or emails, one per line\n\nacmeplumbing.com\nhttps://www.harborhvac.com/about"}
+        placeholder={
+          "Paste domains, URLs or emails, one per line\n\nacmeplumbing.com\nhttps://www.harborhvac.com/about"
+        }
         rows={compact ? 6 : 7}
         spellCheck={false}
         className="block w-full resize-none bg-transparent px-5 pt-5 pb-2 font-mono text-[13px] leading-6 text-ink outline-none placeholder:text-muted/80"
@@ -64,13 +76,19 @@ export function Composer({
             type="file"
             accept=".csv,text/csv,text/plain"
             className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onFile(f);
+              e.target.value = "";
+            }}
           />
         </div>
         <Button variant="primary" size="sm" onClick={submit} disabled={!count} className="pl-3 pr-2.5">
           {count ? `Enrich ${count}` : "Enrich"}
           <ArrowRight size={15} strokeWidth={2} />
-          <span className="ml-1 hidden sm:inline"><Kbd>Ctrl ↵</Kbd></span>
+          <span className="ml-1 hidden sm:inline">
+            <Kbd>Ctrl ↵</Kbd>
+          </span>
         </Button>
       </div>
       {drag && (

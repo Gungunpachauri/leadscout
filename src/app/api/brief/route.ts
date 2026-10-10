@@ -15,7 +15,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   if (!aiProvider()) {
-    return NextResponse.json({ error: "AI is not configured. Set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env.local." }, { status: 503 });
+    return NextResponse.json(
+      { error: "AI is not configured. Set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env.local." },
+      { status: 503 },
+    );
   }
   const parsed = BriefRequestSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });

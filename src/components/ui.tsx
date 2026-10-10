@@ -35,7 +35,18 @@ type BtnProps = {
   expanded?: boolean;
 };
 
-export function Button({ children, onClick, variant = "outline", size = "md", disabled, className, title, type = "button", label, expanded }: BtnProps) {
+export function Button({
+  children,
+  onClick,
+  variant = "outline",
+  size = "md",
+  disabled,
+  className,
+  title,
+  type = "button",
+  label,
+  expanded,
+}: BtnProps) {
   return (
     <button
       type={type}
@@ -71,16 +82,37 @@ export function Kbd({ children }: { children: ReactNode }) {
   );
 }
 
-export function ScoreRing({ score, size = 32, stroke = 3, showLabel = true }: { score: LeadScore; size?: number; stroke?: number; showLabel?: boolean }) {
+export function ScoreRing({
+  score,
+  size = 32,
+  stroke = 3,
+  showLabel = true,
+}: {
+  score: LeadScore;
+  size?: number;
+  stroke?: number;
+  showLabel?: boolean;
+}) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   return (
-    <div className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }} title={`${TIER_LABEL[score.tier]} · ${score.total}/100`}>
+    <div
+      className="relative inline-flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+      title={`${TIER_LABEL[score.tier]} · ${score.total}/100`}
+    >
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
         <circle
-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={TIER_COLOR[score.tier]} strokeWidth={stroke}
-          strokeDasharray={c} strokeDashoffset={c * (1 - score.total / 100)} strokeLinecap="round"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={TIER_COLOR[score.tier]}
+          strokeWidth={stroke}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - score.total / 100)}
+          strokeLinecap="round"
           style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.2,0.8,0.2,1)" }}
         />
       </svg>
@@ -102,7 +134,9 @@ export function Monogram({ name, size = 32 }: { name: string; size?: number }) {
     <div
       className="flex shrink-0 items-center justify-center rounded-lg font-semibold"
       style={{
-        width: size, height: size, fontSize: size * 0.42,
+        width: size,
+        height: size,
+        fontSize: size * 0.42,
         background: `color-mix(in oklch, oklch(0.7 0.08 ${h}) 16%, var(--surface))`,
         color: `color-mix(in oklch, oklch(0.5 0.1 ${h}) 85%, var(--ink))`,
       }}
@@ -116,7 +150,19 @@ export function TierDot({ tier }: { tier: LeadScore["tier"] }) {
   return <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TIER_COLOR[tier] }} />;
 }
 
-export function Toggle({ on, onClick, children, expanded, title }: { on: boolean; onClick: () => void; children: ReactNode; expanded?: boolean; title?: string }) {
+export function Toggle({
+  on,
+  onClick,
+  children,
+  expanded,
+  title,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  expanded?: boolean;
+  title?: string;
+}) {
   return (
     <button
       type="button"
@@ -137,7 +183,15 @@ export function Toggle({ on, onClick, children, expanded, title }: { on: boolean
 }
 
 /** Minimal click-outside popover menu. */
-export function Menu({ trigger, children, align = "right" }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: "left" | "right" }) {
+export function Menu({
+  trigger,
+  children,
+  align = "right",
+}: {
+  trigger: (open: boolean, toggle: () => void) => ReactNode;
+  children: (close: () => void) => ReactNode;
+  align?: "left" | "right";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -146,13 +200,21 @@ export function Menu({ trigger, children, align = "right" }: { trigger: (open: b
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
   return (
     <div ref={ref} className="relative">
       {trigger(open, () => setOpen((o) => !o))}
       {open && (
-        <div className={cx("anim-rise absolute top-full z-30 mt-1.5 min-w-52 rounded-xl border border-line bg-surface p-1 shadow-float", align === "right" ? "right-0" : "left-0")}>
+        <div
+          className={cx(
+            "anim-rise absolute top-full z-30 mt-1.5 min-w-52 rounded-xl border border-line bg-surface p-1 shadow-float",
+            align === "right" ? "right-0" : "left-0",
+          )}
+        >
           {children(() => setOpen(false))}
         </div>
       )}
@@ -160,7 +222,17 @@ export function Menu({ trigger, children, align = "right" }: { trigger: (open: b
   );
 }
 
-export function MenuItem({ children, onClick, hint, disabled }: { children: ReactNode; onClick: () => void; hint?: string; disabled?: boolean }) {
+export function MenuItem({
+  children,
+  onClick,
+  hint,
+  disabled,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  hint?: string;
+  disabled?: boolean;
+}) {
   return (
     <button
       disabled={disabled}
@@ -173,7 +245,8 @@ export function MenuItem({ children, onClick, hint, disabled }: { children: Reac
   );
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Dialog focus management: move focus inside on open, keep Tab cycling within,
@@ -190,13 +263,22 @@ function useDialog(open: boolean, onClose: () => void, lockScroll: boolean) {
     const first = node?.querySelector<HTMLElement>("[data-autofocus]") ?? node?.querySelector<HTMLElement>(FOCUSABLE);
     first?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); return; }
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closeRef.current();
+        return;
+      }
       if (e.key !== "Tab" || !node) return;
       const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
       if (!items.length) return;
       const [a, z] = [items[0], items[items.length - 1]];
-      if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); }
-      else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+      if (e.shiftKey && document.activeElement === a) {
+        e.preventDefault();
+        z.focus();
+      } else if (!e.shiftKey && document.activeElement === z) {
+        e.preventDefault();
+        a.focus();
+      }
     };
     document.addEventListener("keydown", onKey, true);
     const prev = document.body.style.overflow;
@@ -210,12 +292,28 @@ function useDialog(open: boolean, onClose: () => void, lockScroll: boolean) {
   return ref;
 }
 
-export function Sheet({ open, onClose, children, width = 520, label }: { open: boolean; onClose: () => void; children: ReactNode; width?: number; label: string }) {
+export function Sheet({
+  open,
+  onClose,
+  children,
+  width = 520,
+  label,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  width?: number;
+  label: string;
+}) {
   const ref = useDialog(open, onClose, true);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40">
-      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} aria-hidden />
+      <div
+        className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50"
+        onClick={onClose}
+        aria-hidden
+      />
       <div
         ref={ref}
         role="dialog"
@@ -230,12 +328,26 @@ export function Sheet({ open, onClose, children, width = 520, label }: { open: b
   );
 }
 
-export function Modal({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: ReactNode; label: string }) {
+export function Modal({
+  open,
+  onClose,
+  children,
+  label,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  label: string;
+}) {
   const ref = useDialog(open, onClose, false);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center px-4 pt-[12vh]">
-      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} aria-hidden />
+      <div
+        className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50"
+        onClick={onClose}
+        aria-hidden
+      />
       <div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="anim-rise relative w-full max-w-xl">
         {children}
       </div>
@@ -248,7 +360,13 @@ export function Modal({ open, onClose, children, label }: { open: boolean; onClo
  * link or tabIndex=0) so keyboard users get the same information.
  */
 export function Tip({
-  content, children, side = "top", align = "center", className, wide, parentFocus,
+  content,
+  children,
+  side = "top",
+  align = "center",
+  className,
+  wide,
+  parentFocus,
 }: {
   content: ReactNode;
   children: ReactNode;

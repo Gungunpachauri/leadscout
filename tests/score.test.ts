@@ -60,7 +60,10 @@ describe("scoreLead", () => {
   });
 
   it("applies preferred characteristics", () => {
-    const icp: IcpSettings = { ...DEFAULT_ICP, prefer: { familyOwned: true, ownerOperated: false, directContact: true } };
+    const icp: IcpSettings = {
+      ...DEFAULT_ICP,
+      prefer: { familyOwned: true, ownerOperated: false, directContact: true },
+    };
     expect(comp(scoreLead(strongLead(), icp, NOW), "icp").points).toBe(SCORING.icp.max);
     const noFamily = { ...strongLead(), signals: { ...strongLead().signals, familyOwned: false } };
     expect(comp(scoreLead(noFamily, icp, NOW), "icp").points).toBeLessThan(SCORING.icp.max);
@@ -74,7 +77,11 @@ describe("scoreLead", () => {
 
   it("scores an inferred founding year below a stated one, with a caveat", () => {
     const base = { foundedYear: 1990 };
-    const s1 = scoreLead(makeEnrichment({ ...base, evidence: { foundedYear: stated("since 1990") } }), DEFAULT_ICP, NOW);
+    const s1 = scoreLead(
+      makeEnrichment({ ...base, evidence: { foundedYear: stated("since 1990") } }),
+      DEFAULT_ICP,
+      NOW,
+    );
     const s2 = scoreLead(makeEnrichment({ ...base, evidence: { foundedYear: inferred() } }), DEFAULT_ICP, NOW);
     expect(comp(s2, "fit").points).toBeLessThan(comp(s1, "fit").points);
     expect(comp(s2, "fit").caveats.join(" ")).toMatch(/estimated/i);
@@ -86,7 +93,9 @@ describe("scoreLead", () => {
   });
 
   it("caveats MX checks, long tenure and website observations", () => {
-    const caveats = scoreLead(strongLead(), DEFAULT_ICP, NOW).components.flatMap((c) => c.caveats).join(" ");
+    const caveats = scoreLead(strongLead(), DEFAULT_ICP, NOW)
+      .components.flatMap((c) => c.caveats)
+      .join(" ");
     expect(caveats).toMatch(/mailbox is not verified/);
     expect(caveats).toMatch(/not evidence that the owner plans to sell/);
     expect(caveats).toMatch(/do not prove/);
@@ -132,7 +141,9 @@ describe("score explanation integrity", () => {
 describe("nextActions", () => {
   it("never asserts a sale or retirement", () => {
     const d = strongLead();
-    const text = nextActions(d, scoreLead(d, DEFAULT_ICP, NOW), NOW).map((a) => `${a.title} ${a.why}`).join(" ");
+    const text = nextActions(d, scoreLead(d, DEFAULT_ICP, NOW), NOW)
+      .map((a) => `${a.title} ${a.why}`)
+      .join(" ");
     expect(text).not.toMatch(/for sale|retir(e|ing)|wants to sell/i);
   });
 

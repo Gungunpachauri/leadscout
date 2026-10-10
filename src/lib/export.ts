@@ -31,64 +31,68 @@ function toCsv(records: Record<string, unknown>[]): string {
 }
 
 export function buildCsv(rows: Scored[], nowYear = new Date().getFullYear()): string {
-  return toCsv(rows.map(({ lead: l, score: s }) => {
-    const d = l.data;
-    const comp = (k: string) => s.components.find((c) => c.key === k)!;
-    const actions = d ? nextActions(d, s, nowYear) : [];
-    return {
-      Company: d?.name ?? l.inputName ?? l.domain,
-      Domain: l.domain,
-      Score: s.total,
-      Tier: s.tier,
-      Reachability: `${comp("reach").points}/${comp("reach").max}`,
-      "Acquisition Fit": `${comp("fit").points}/${comp("fit").max}`,
-      "Buy-box Match": `${comp("icp").points}/${comp("icp").max}`,
-      "Data Confidence": `${comp("confidence").points}/${comp("confidence").max}`,
-      Industry: d?.industry ?? UNKNOWN,
-      "Industry Evidence": fmtEvidence(d?.evidence.industry),
-      Location: d?.location ?? UNKNOWN,
-      "Founded": d?.foundedYear ?? UNKNOWN,
-      "Founded Evidence": fmtEvidence(d?.evidence.foundedYear),
-      "Founded Source": d?.evidence.foundedYear?.snippet ?? "",
-      Ownership: d?.signals.familyOwned ? "Family-owned" : d?.signals.ownerOperated ? "Owner-operated" : UNKNOWN,
-      "Ownership Evidence": fmtEvidence(d?.evidence.familyOwned ?? d?.evidence.ownerOperated),
-      "Best Email": bestEmail(l),
-      "Email Domain MX": d?.emails[0] ? (d.emails[0].status === "mx-ok" ? "Yes (mailbox not verified)" : "No") : "",
-      Phone: d?.phones[0]?.display ?? "",
-      "Decision Maker": d?.people[0] ? `${d.people[0].name} (${d.people[0].title})` : UNKNOWN,
-      LinkedIn: d?.socials.linkedin ?? "",
-      "Next Action": actions[0] ? `${actions[0].title}: ${actions[0].why}` : "",
-      "Score Reasons": s.components.map((c) => `${c.label}: ${c.reasons.join("; ")}`).join(" | "),
-      Caveats: s.components.flatMap((c) => c.caveats).join(" | "),
-      "AI Fit (1-10)": l.ai?.fitRating ?? "",
-    };
-  }));
+  return toCsv(
+    rows.map(({ lead: l, score: s }) => {
+      const d = l.data;
+      const comp = (k: string) => s.components.find((c) => c.key === k)!;
+      const actions = d ? nextActions(d, s, nowYear) : [];
+      return {
+        Company: d?.name ?? l.inputName ?? l.domain,
+        Domain: l.domain,
+        Score: s.total,
+        Tier: s.tier,
+        Reachability: `${comp("reach").points}/${comp("reach").max}`,
+        "Acquisition Fit": `${comp("fit").points}/${comp("fit").max}`,
+        "Buy-box Match": `${comp("icp").points}/${comp("icp").max}`,
+        "Data Confidence": `${comp("confidence").points}/${comp("confidence").max}`,
+        Industry: d?.industry ?? UNKNOWN,
+        "Industry Evidence": fmtEvidence(d?.evidence.industry),
+        Location: d?.location ?? UNKNOWN,
+        Founded: d?.foundedYear ?? UNKNOWN,
+        "Founded Evidence": fmtEvidence(d?.evidence.foundedYear),
+        "Founded Source": d?.evidence.foundedYear?.snippet ?? "",
+        Ownership: d?.signals.familyOwned ? "Family-owned" : d?.signals.ownerOperated ? "Owner-operated" : UNKNOWN,
+        "Ownership Evidence": fmtEvidence(d?.evidence.familyOwned ?? d?.evidence.ownerOperated),
+        "Best Email": bestEmail(l),
+        "Email Domain MX": d?.emails[0] ? (d.emails[0].status === "mx-ok" ? "Yes (mailbox not verified)" : "No") : "",
+        Phone: d?.phones[0]?.display ?? "",
+        "Decision Maker": d?.people[0] ? `${d.people[0].name} (${d.people[0].title})` : UNKNOWN,
+        LinkedIn: d?.socials.linkedin ?? "",
+        "Next Action": actions[0] ? `${actions[0].title}: ${actions[0].why}` : "",
+        "Score Reasons": s.components.map((c) => `${c.label}: ${c.reasons.join("; ")}`).join(" | "),
+        Caveats: s.components.flatMap((c) => c.caveats).join(" | "),
+        "AI Fit (1-10)": l.ai?.fitRating ?? "",
+      };
+    }),
+  );
 }
 
 /** Column names match HubSpot's default company + contact import properties. */
 export function buildHubspotCsv(rows: Scored[]): string {
-  return toCsv(rows.map(({ lead: l, score: s }) => {
-    const d = l.data;
-    const [first, last] = splitName(d?.people[0]?.name);
-    const [city, state] = (d?.location ?? "").split(",").map((x) => x.trim());
-    return {
-      "Company name": d?.name ?? l.inputName ?? l.domain,
-      "Company Domain Name": l.domain,
-      Industry: d?.industry ?? "",
-      City: city ?? "",
-      "State/Region": state ?? "",
-      "Year Founded": d?.foundedYear ?? "",
-      "Phone Number": d?.phones[0]?.e164 ?? "",
-      "LinkedIn Company Page": d?.socials.linkedin ?? "",
-      "First Name": first,
-      "Last Name": last,
-      "Job Title": d?.people[0]?.title ?? "",
-      Email: bestEmail(l),
-      "Lead Status": "NEW",
-      "HubSpot Score": s.total,
-      Description: `LeadScout tier ${s.tier} (${s.total}/100). ${l.ai?.summary ?? d?.description ?? ""}`.trim(),
-    };
-  }));
+  return toCsv(
+    rows.map(({ lead: l, score: s }) => {
+      const d = l.data;
+      const [first, last] = splitName(d?.people[0]?.name);
+      const [city, state] = (d?.location ?? "").split(",").map((x) => x.trim());
+      return {
+        "Company name": d?.name ?? l.inputName ?? l.domain,
+        "Company Domain Name": l.domain,
+        Industry: d?.industry ?? "",
+        City: city ?? "",
+        "State/Region": state ?? "",
+        "Year Founded": d?.foundedYear ?? "",
+        "Phone Number": d?.phones[0]?.e164 ?? "",
+        "LinkedIn Company Page": d?.socials.linkedin ?? "",
+        "First Name": first,
+        "Last Name": last,
+        "Job Title": d?.people[0]?.title ?? "",
+        Email: bestEmail(l),
+        "Lead Status": "NEW",
+        "HubSpot Score": s.total,
+        Description: `LeadScout tier ${s.tier} (${s.total}/100). ${l.ai?.summary ?? d?.description ?? ""}`.trim(),
+      };
+    }),
+  );
 }
 
 function download(filename: string, csv: string) {
@@ -112,8 +116,12 @@ export function templateEmail(l: Lead, sender: { name?: string; firm?: string })
   // Only greet by name when the site itself published it in structured data.
   const person = d.people.find((p) => p.evidence.method === "structured");
   const first = person?.name.split(" ")[0];
-  const age = d.foundedYear && d.evidence.foundedYear?.method !== "inferred" ? new Date().getFullYear() - d.foundedYear : null;
-  const legacy = age && age >= 10 ? `${age} years of serving ${d.location ? `the ${d.location.split(",")[0]} community` : "your customers"}` : "what you've built";
+  const age =
+    d.foundedYear && d.evidence.foundedYear?.method !== "inferred" ? new Date().getFullYear() - d.foundedYear : null;
+  const legacy =
+    age && age >= 10
+      ? `${age} years of serving ${d.location ? `the ${d.location.split(",")[0]} community` : "your customers"}`
+      : "what you've built";
   return {
     subject: `${d.name}: a quick question`,
     body: `Hi ${first ?? "there"},

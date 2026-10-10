@@ -32,15 +32,27 @@ export const EnrichmentSchema = z.object({
   location: str(120).nullable(),
   foundedYear: z.number().int().nullable(),
   copyrightYear: z.number().int().nullable(),
-  emails: z.array(z.object({
-    address: str(254), status: z.enum(["mx-ok", "no-mx"]), isRole: z.boolean(), onDomain: z.boolean(), source: url,
-  })).max(10),
+  emails: z
+    .array(
+      z.object({
+        address: str(254),
+        status: z.enum(["mx-ok", "no-mx"]),
+        isRole: z.boolean(),
+        onDomain: z.boolean(),
+        source: url,
+      }),
+    )
+    .max(10),
   phones: z.array(z.object({ display: str(40), e164: str(20), source: url })).max(10),
   people: z.array(z.object({ name: str(80), title: str(80), evidence: EvidenceSchema })).max(10),
   socials: z.record(z.string(), url),
   tech: z.array(str(40)).max(30),
   signals: z.object({
-    familyOwned: z.boolean(), ownerOperated: z.boolean(), hiring: z.boolean(), ecommerce: z.boolean(), onlineBooking: z.boolean(),
+    familyOwned: z.boolean(),
+    ownerOperated: z.boolean(),
+    hiring: z.boolean(),
+    ecommerce: z.boolean(),
+    onlineBooking: z.boolean(),
   }),
   evidence: z.object({
     name: EvidenceSchema.optional(),

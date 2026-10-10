@@ -3,12 +3,54 @@ import type { EmailContact, PhoneContact } from "./types";
 
 // Department inboxes, matched as substrings so "bizgifts@" and "customercare@" count too.
 const ROLE_KEYWORDS = [
-  "info", "contact", "sales", "support", "admin", "office", "hello", "service",
-  "help", "team", "career", "job", "hr", "billing", "account", "marketing",
-  "media", "press", "reply", "webmaster", "order", "enquir", "inquir", "general",
-  "mail", "event", "gift", "store", "shop", "wholesale", "catering", "booking",
-  "reserv", "feedback", "privacy", "legal", "care", "present", "location", "visit",
-  "tech", "dispatch", "quote", "estimat", "hiring", "partner", "invoice", "accessib",
+  "info",
+  "contact",
+  "sales",
+  "support",
+  "admin",
+  "office",
+  "hello",
+  "service",
+  "help",
+  "team",
+  "career",
+  "job",
+  "hr",
+  "billing",
+  "account",
+  "marketing",
+  "media",
+  "press",
+  "reply",
+  "webmaster",
+  "order",
+  "enquir",
+  "inquir",
+  "general",
+  "mail",
+  "event",
+  "gift",
+  "store",
+  "shop",
+  "wholesale",
+  "catering",
+  "booking",
+  "reserv",
+  "feedback",
+  "privacy",
+  "legal",
+  "care",
+  "present",
+  "location",
+  "visit",
+  "tech",
+  "dispatch",
+  "quote",
+  "estimat",
+  "hiring",
+  "partner",
+  "invoice",
+  "accessib",
 ];
 
 export function isRoleLocal(local: string): boolean {
@@ -18,9 +60,19 @@ export function isRoleLocal(local: string): boolean {
 
 // Placeholder or vendor addresses that show up in page source but aren't leads.
 const JUNK_EMAIL_DOMAINS = [
-  "example.com", "domain.com", "email.com", "yourdomain.com", "sentry.io",
-  "wixpress.com", "sentry-next.wixpress.com", "godaddy.com", "squarespace.com",
-  "shopify.com", "wordpress.com", "schema.org", "w3.org",
+  "example.com",
+  "domain.com",
+  "email.com",
+  "yourdomain.com",
+  "sentry.io",
+  "wixpress.com",
+  "sentry-next.wixpress.com",
+  "godaddy.com",
+  "squarespace.com",
+  "shopify.com",
+  "wordpress.com",
+  "schema.org",
+  "w3.org",
 ];
 
 const EMAIL_SYNTAX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/;
@@ -44,7 +96,12 @@ export function domainAcceptsMail(domain: string): Promise<boolean> {
     p = dns
       .resolveMx(domain)
       .then((r) => r.length > 0)
-      .catch(() => dns.resolve4(domain).then((r) => r.length > 0).catch(() => false));
+      .catch(() =>
+        dns
+          .resolve4(domain)
+          .then((r) => r.length > 0)
+          .catch(() => false),
+      );
     mxCache.set(domain, p);
   }
   return p;
@@ -56,7 +113,11 @@ export async function validateEmails(
 ): Promise<EmailContact[]> {
   const unique = new Map<string, string>();
   for (const f of found) {
-    const a = f.address.toLowerCase().replace(/^mailto:/, "").split("?")[0].trim();
+    const a = f.address
+      .toLowerCase()
+      .replace(/^mailto:/, "")
+      .split("?")[0]
+      .trim();
     if (isPlausibleEmail(a) && !unique.has(a)) unique.set(a, f.source);
   }
   const results = await Promise.all(

@@ -81,29 +81,60 @@ input[type="range"] {
 }
 
 @keyframes slide-in {
-  from { transform: translateX(24px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes rise {
-  from { transform: translateY(8px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
-.anim-slide { animation: slide-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.anim-fade { animation: fade-in 0.2s ease-out; }
+.anim-slide {
+  animation: slide-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.anim-fade {
+  animation: fade-in 0.2s ease-out;
+}
 /* No fill-mode: if animations are paused or reduced, content stays visible. */
-.anim-rise { animation: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.anim-rise {
+  animation: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-slide, .anim-fade, .anim-rise, .skeleton { animation: none; }
+  .anim-slide,
+  .anim-fade,
+  .anim-rise,
+  .skeleton {
+    animation: none;
+  }
 }
 
 .skeleton {
@@ -112,5 +143,9 @@ input[type="range"] {
   animation: shimmer 1.4s linear infinite;
 }
 
-.scrollbar-none::-webkit-scrollbar { display: none; }
-.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  scrollbar-width: none;
+}

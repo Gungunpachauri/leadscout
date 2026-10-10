@@ -31,7 +31,7 @@ describe("buildCsv", () => {
   });
 
   it("neutralises spreadsheet formula injection", () => {
-    const evil = makeEnrichment({ name: "=HYPERLINK(\"http://evil\")" });
+    const evil = makeEnrichment({ name: '=HYPERLINK("http://evil")' });
     const out = parse(buildCsv([scored({ domain: "acme.com", status: "done", data: evil })]));
     expect(out[0].Company.startsWith("'=")).toBe(true);
   });

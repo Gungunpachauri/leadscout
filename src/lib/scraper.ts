@@ -1,6 +1,13 @@
 import * as cheerio from "cheerio";
 import { safeFetch } from "./http";
-import { ENRICHMENT_VERSION, type Enrichment, type Evidence, type FactKey, type PersonContact, type Socials } from "./types";
+import {
+  ENRICHMENT_VERSION,
+  type Enrichment,
+  type Evidence,
+  type FactKey,
+  type PersonContact,
+  type Socials,
+} from "./types";
 import { normalizePhones, validateEmails } from "./validate";
 
 const MAX_PAGES = 4;
@@ -21,7 +28,10 @@ export function parseRobots(txt: string): RobotsRules {
     const key = m[1].toLowerCase();
     const val = m[2].trim();
     if (key === "user-agent") {
-      if (sawRuleInGroup) { inStar = false; sawRuleInGroup = false; }
+      if (sawRuleInGroup) {
+        inStar = false;
+        sawRuleInGroup = false;
+      }
       if (val === "*") inStar = true;
     } else if (key === "allow" || key === "disallow") {
       sawRuleInGroup = true;
@@ -34,7 +44,13 @@ export function parseRobots(txt: string): RobotsRules {
 export function robotsAllows(rules: RobotsRules, path: string): boolean {
   // Longest matching rule wins, per RFC 9309.
   const match = (p: string) => {
-    const re = new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\\\$$/, "$"));
+    const re = new RegExp(
+      "^" +
+        p
+          .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\\\$$/, "$"),
+    );
     return re.test(path) ? p.length : -1;
   };
   const allow = Math.max(-1, ...rules.allow.map(match));
@@ -46,24 +62,38 @@ export function robotsAllows(rules: RobotsRules, path: string): boolean {
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
 const PHONE_RE = /(?:\+?1[\s.-]?)?\(?\b[2-9]\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
-const FOUNDED_RE = /\b(?:since|established|est\.?|founded(?:\s+in)?|serving[^.]{0,40}since|in business since)\s*(?:in\s*)?((?:18|19|20)\d{2})\b/gi;
+const FOUNDED_RE =
+  /\b(?:since|established|est\.?|founded(?:\s+in)?|serving[^.]{0,40}since|in business since)\s*(?:in\s*)?((?:18|19|20)\d{2})\b/gi;
 // "for 25 years" usually describes a person's tenure, so only lower-bound phrasing counts.
 const YEARS_RE = /\b(?:over|more than|nearly|almost)\s+(\d{2,3})\s+years\b/i;
 // "Nth generation" alone often comes from customer reviews ("the 4th generation visited"),
 // so it only counts when tied to the business itself.
-const FAMILY_RE = /\b(family[- ]owned|family[- ]run|family business|owned by the [A-Z][a-z]+ family|(?:second|third|fourth|fifth|2nd|3rd|4th|5th)[- ]generation[- ](?:family|owned|business|company|owners?|operated))\b/i;
-const OWNER_RE = /\b(owner[- ]operated|locally owned|independently owned|veteran[- ]owned|woman[- ]owned|women[- ]owned|owned and operated)\b/i;
+const FAMILY_RE =
+  /\b(family[- ]owned|family[- ]run|family business|owned by the [A-Z][a-z]+ family|(?:second|third|fourth|fifth|2nd|3rd|4th|5th)[- ]generation[- ](?:family|owned|business|company|owners?|operated))\b/i;
+const OWNER_RE =
+  /\b(owner[- ]operated|locally owned|independently owned|veteran[- ]owned|woman[- ]owned|women[- ]owned|owned and operated)\b/i;
 // Title words match in lower or Title case, but names must stay case-sensitive,
 // so we can't use the regex "i" flag.
-const TITLE_WORDS = ["founder", "co-founder", "owner", "president", "ceo", "principal", "managing partner", "managing director"]
+const TITLE_WORDS = [
+  "founder",
+  "co-founder",
+  "owner",
+  "president",
+  "ceo",
+  "principal",
+  "managing partner",
+  "managing director",
+]
   .map((w) => w.replace(/\b[a-z]/g, (c) => `[${c.toUpperCase()}${c}]`))
   .concat("CEO")
   .join("|");
 const NAME = "[A-Z][a-z]+(?:\\s[A-Z]\\.)?\\s[A-Z][a-z][a-zA-Z'’-]*";
 const PERSON_AFTER = new RegExp(`\\b(${TITLE_WORDS})\\b[\\s,:\\-–—]+(?:and\\s+\\w+\\s+)?(${NAME})\\b`, "g");
 const PERSON_BEFORE = new RegExp(`\\b(${NAME})\\s*[,\\-–—|]\\s*(?:the\\s+|our\\s+)?(${TITLE_WORDS})\\b`, "g");
-const NOT_NAMES = /^(Our|The|About|Contact|Meet|Read|Learn|Call|Email|Home|View|More|Your|Free|Get|Privacy|Terms|Copyright|All|New|Best|Top|Why|How)\b/;
-const NOT_SURNAMES = /\b(Farmer|Owner|Manager|Director|Partner|Team|Group|Family|Company|Services?|Store|Shop|Founder|President|Officer|Staff|Members?)$/;
+const NOT_NAMES =
+  /^(Our|The|About|Contact|Meet|Read|Learn|Call|Email|Home|View|More|Your|Free|Get|Privacy|Terms|Copyright|All|New|Best|Top|Why|How)\b/;
+const NOT_SURNAMES =
+  /\b(Farmer|Owner|Manager|Director|Partner|Team|Group|Family|Company|Services?|Store|Shop|Founder|President|Officer|Staff|Members?)$/;
 
 const TECH_SIGNATURES: [string, RegExp][] = [
   ["WordPress", /wp-content|wp-includes/i],
@@ -89,12 +119,24 @@ const TECH_SIGNATURES: [string, RegExp][] = [
 ];
 
 const INDUSTRY_KEYWORDS: [string, RegExp][] = [
-  ["Home Services", /\b(hvac|plumb(?:ing|er)|roof(?:ing|er)|landscap\w*|electrician|pest control|remodel\w*|handyman|cleaning services?|garage door|pool service)/gi],
+  [
+    "Home Services",
+    /\b(hvac|plumb(?:ing|er)|roof(?:ing|er)|landscap\w*|electrician|pest control|remodel\w*|handyman|cleaning services?|garage door|pool service)/gi,
+  ],
   ["Construction", /\b(construction|general contractor|excavat\w*|concrete|framing|builders?)\b/gi],
   ["Manufacturing", /\b(manufactur\w*|machin(?:e|ing) shop|fabricat\w*|cnc|injection mold\w*|industrial|assembly)/gi],
-  ["Healthcare", /\b(dental|dentist|clinic|medical|chiropract\w*|physical therapy|veterinar\w*|orthodont\w*|pharmacy|health ?care)/gi],
-  ["Professional Services", /\b(accounting|cpa|bookkeeping|tax preparation|law firm|attorney|consulting|engineering firm|architect\w*)/gi],
-  ["IT Services", /\b(managed services|msp|it support|cybersecurity|network(?:ing)? services|it services|help ?desk)\b/gi],
+  [
+    "Healthcare",
+    /\b(dental|dentist|clinic|medical|chiropract\w*|physical therapy|veterinar\w*|orthodont\w*|pharmacy|health ?care)/gi,
+  ],
+  [
+    "Professional Services",
+    /\b(accounting|cpa|bookkeeping|tax preparation|law firm|attorney|consulting|engineering firm|architect\w*)/gi,
+  ],
+  [
+    "IT Services",
+    /\b(managed services|msp|it support|cybersecurity|network(?:ing)? services|it services|help ?desk)\b/gi,
+  ],
   ["Software", /\b(saas|software|platform|api|app for|cloud-based)\b/gi],
   ["Logistics", /\b(logistics|trucking|freight|warehous\w*|distribution|courier|3pl)/gi],
   ["Food & Beverage", /\b(restaurant|bakery|catering|brewery|coffee|cafe|deli|food|spices?|winery)\b/gi],
@@ -105,13 +147,27 @@ const INDUSTRY_KEYWORDS: [string, RegExp][] = [
 ];
 
 const SCHEMA_INDUSTRY: Record<string, string> = {
-  HVACBusiness: "Home Services", Plumber: "Home Services", RoofingContractor: "Home Services",
-  Electrician: "Home Services", HousePainter: "Home Services", GeneralContractor: "Construction",
-  Dentist: "Healthcare", MedicalClinic: "Healthcare", Physician: "Healthcare", VeterinaryCare: "Healthcare",
-  AccountingService: "Professional Services", LegalService: "Professional Services", Attorney: "Professional Services",
-  Restaurant: "Food & Beverage", Bakery: "Food & Beverage", FoodEstablishment: "Food & Beverage",
-  Store: "Retail & E-commerce", OnlineStore: "Retail & E-commerce", InsuranceAgency: "Insurance",
-  SoftwareApplication: "Software", EducationalOrganization: "Education",
+  HVACBusiness: "Home Services",
+  Plumber: "Home Services",
+  RoofingContractor: "Home Services",
+  Electrician: "Home Services",
+  HousePainter: "Home Services",
+  GeneralContractor: "Construction",
+  Dentist: "Healthcare",
+  MedicalClinic: "Healthcare",
+  Physician: "Healthcare",
+  VeterinaryCare: "Healthcare",
+  AccountingService: "Professional Services",
+  LegalService: "Professional Services",
+  Attorney: "Professional Services",
+  Restaurant: "Food & Beverage",
+  Bakery: "Food & Beverage",
+  FoodEstablishment: "Food & Beverage",
+  Store: "Retail & E-commerce",
+  OnlineStore: "Retail & E-commerce",
+  InsuranceAgency: "Insurance",
+  SoftwareApplication: "Software",
+  EducationalOrganization: "Education",
 };
 
 export interface PageFacts {
@@ -137,7 +193,12 @@ function excerpt(text: string, index: number, length: number): string {
 export function parsePage(url: string, html: string): PageFacts {
   // Pad element boundaries so text from adjacent tags doesn't run together
   // ("hello@foo.com" + "What we do" must not become "hello@foo.comWhat").
-  const $ = cheerio.load(html.replace(/<\/(p|div|li|h[1-6]|td|th|span|a|section|footer|header|address|strong|b|em|i|label|button)>|<br\s*\/?>/gi, "$& "));
+  const $ = cheerio.load(
+    html.replace(
+      /<\/(p|div|li|h[1-6]|td|th|span|a|section|footer|header|address|strong|b|em|i|label|button)>|<br\s*\/?>/gi,
+      "$& ",
+    ),
+  );
   const jsonLd: Record<string, unknown>[] = [];
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
@@ -151,7 +212,9 @@ export function parsePage(url: string, html: string): PageFacts {
         }
       };
       flat(parsed);
-    } catch { /* malformed JSON-LD is common; skip it */ }
+    } catch {
+      /* malformed JSON-LD is common; skip it */
+    }
   });
 
   const links: { href: string; text: string }[] = [];
@@ -161,7 +224,11 @@ export function parsePage(url: string, html: string): PageFacts {
     const href = $(el).attr("href") ?? "";
     if (href.startsWith("mailto:")) emails.push(href.slice(7));
     else if (href.startsWith("tel:")) {
-      try { phones.push(decodeURIComponent(href.slice(4))); } catch { /* bad escape */ }
+      try {
+        phones.push(decodeURIComponent(href.slice(4)));
+      } catch {
+        /* bad escape */
+      }
     } else links.push({ href, text: $(el).text().trim().slice(0, 80) });
   });
 
@@ -176,7 +243,11 @@ export function parsePage(url: string, html: string): PageFacts {
     text,
     html,
     title: $("title").first().text().trim(),
-    description: ($('meta[name="description"]').attr("content") ?? $('meta[property="og:description"]').attr("content") ?? "").trim(),
+    description: (
+      $('meta[name="description"]').attr("content") ??
+      $('meta[property="og:description"]').attr("content") ??
+      ""
+    ).trim(),
     siteName: ($('meta[property="og:site_name"]').attr("content") ?? "").trim(),
     links,
     emails,
@@ -190,11 +261,12 @@ type Found<T> = { value: T; evidence: Evidence } | null;
 function findSocials(pages: PageFacts[]): Socials {
   const s: Socials = {};
   const all = pages.flatMap((p) => p.links.map((l) => l.href));
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const same = ld.sameAs;
-    if (Array.isArray(same)) all.push(...same.filter((x): x is string => typeof x === "string"));
-    else if (typeof same === "string") all.push(same);
-  }
+  for (const p of pages)
+    for (const ld of p.jsonLd) {
+      const same = ld.sameAs;
+      if (Array.isArray(same)) all.push(...same.filter((x): x is string => typeof x === "string"));
+      else if (typeof same === "string") all.push(same);
+    }
   for (const href of all) {
     if (!s.linkedin && /linkedin\.com\/(company|in|school)\//i.test(href)) s.linkedin = href;
     else if (!s.facebook && /facebook\.com\/(?!sharer|share|dialog|tr\b)/i.test(href)) s.facebook = href;
@@ -220,31 +292,52 @@ function findPeople(pages: PageFacts[]): PersonContact[] {
           const o = person as Record<string, unknown> | null;
           if (o && typeof o === "object" && typeof o.name === "string") {
             const title = typeof o.jobTitle === "string" ? o.jobTitle : key === "founder" ? "Founder" : "Team";
-            add(o.name, title, { method: "structured", confidence: "high", source: p.url, snippet: `schema.org ${key}: ${o.name}` });
+            add(o.name, title, {
+              method: "structured",
+              confidence: "high",
+              source: p.url,
+              snippet: `schema.org ${key}: ${o.name}`,
+            });
           }
         }
       }
     }
     for (const m of p.text.matchAll(PERSON_AFTER)) {
-      add(m[2], m[1], { method: "inferred", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) });
+      add(m[2], m[1], {
+        method: "inferred",
+        confidence: "medium",
+        source: p.url,
+        snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+      });
     }
     for (const m of p.text.matchAll(PERSON_BEFORE)) {
-      add(m[1], m[2], { method: "inferred", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) });
+      add(m[1], m[2], {
+        method: "inferred",
+        confidence: "medium",
+        source: p.url,
+        snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+      });
     }
   }
   // Structured entries first; they are the most trustworthy.
-  return [...out.values()].sort((a, b) => (a.evidence.method === "structured" ? 0 : 1) - (b.evidence.method === "structured" ? 0 : 1)).slice(0, 5);
+  return [...out.values()]
+    .sort((a, b) => (a.evidence.method === "structured" ? 0 : 1) - (b.evidence.method === "structured" ? 0 : 1))
+    .slice(0, 5);
 }
 
 function findIndustry(pages: PageFacts[]): Found<string> {
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const types = ([] as unknown[]).concat(ld["@type"] ?? []);
-    for (const t of types) {
-      if (typeof t === "string" && SCHEMA_INDUSTRY[t]) {
-        return { value: SCHEMA_INDUSTRY[t], evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org @type: ${t}` } };
+  for (const p of pages)
+    for (const ld of p.jsonLd) {
+      const types = ([] as unknown[]).concat(ld["@type"] ?? []);
+      for (const t of types) {
+        if (typeof t === "string" && SCHEMA_INDUSTRY[t]) {
+          return {
+            value: SCHEMA_INDUSTRY[t],
+            evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org @type: ${t}` },
+          };
+        }
       }
     }
-  }
   // Title and meta description say what the business *is*; body copy is noisier.
   const head = pages.map((p) => `${p.title} ${p.description}`).join(" ");
   const body = pages.map((p) => p.text.slice(0, 20000)).join(" ");
@@ -255,12 +348,17 @@ function findIndustry(pages: PageFacts[]): Found<string> {
     const score = headMatches.length * 3 + bodyMatches.length;
     if (score >= 2 && (!best || score > best.score)) {
       const terms = new Map<string, number>();
-      for (const t of [...headMatches, ...bodyMatches]) terms.set(t.toLowerCase(), (terms.get(t.toLowerCase()) ?? 0) + 1);
+      for (const t of [...headMatches, ...bodyMatches])
+        terms.set(t.toLowerCase(), (terms.get(t.toLowerCase()) ?? 0) + 1);
       best = { industry, score, headHits: headMatches.length, terms };
     }
   }
   if (!best) return null;
-  const top = [...best.terms].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, n]) => `"${t}" ×${n}`).join(", ");
+  const top = [...best.terms]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([t, n]) => `"${t}" ×${n}`)
+    .join(", ");
   return {
     value: best.industry,
     evidence: {
@@ -273,23 +371,56 @@ function findIndustry(pages: PageFacts[]): Found<string> {
 }
 
 function findLocation(pages: PageFacts[]): Found<string> {
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const addr = (ld.address ?? (ld.location as Record<string, unknown> | undefined)?.address) as Record<string, string> | string | undefined;
-    if (typeof addr === "string" && addr.trim()) {
-      return { value: addr.slice(0, 80), evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org address: ${addr.slice(0, 80)}` } };
+  for (const p of pages)
+    for (const ld of p.jsonLd) {
+      const addr = (ld.address ?? (ld.location as Record<string, unknown> | undefined)?.address) as
+        Record<string, string> | string | undefined;
+      if (typeof addr === "string" && addr.trim()) {
+        return {
+          value: addr.slice(0, 80),
+          evidence: {
+            method: "structured",
+            confidence: "high",
+            source: p.url,
+            snippet: `schema.org address: ${addr.slice(0, 80)}`,
+          },
+        };
+      }
+      if (addr && typeof addr === "object" && (addr.addressLocality || addr.addressRegion)) {
+        const value = [addr.addressLocality, addr.addressRegion, addr.addressCountry]
+          .filter((x) => typeof x === "string")
+          .join(", ");
+        return {
+          value,
+          evidence: {
+            method: "structured",
+            confidence: "high",
+            source: p.url,
+            snippet: `schema.org address: ${value}`,
+          },
+        };
+      }
     }
-    if (addr && typeof addr === "object" && (addr.addressLocality || addr.addressRegion)) {
-      const value = [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter((x) => typeof x === "string").join(", ");
-      return { value, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org address: ${value}` } };
-    }
-  }
   for (const p of pages) {
-    const m = p.text.match(/\b([A-Z][a-zA-Z.]+(?:\s[A-Z][a-zA-Z.]+)?),\s(A[LKZR]|C[AOT]|D[EC]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\s\d{5}\b/);
+    const m = p.text.match(
+      /\b([A-Z][a-zA-Z.]+(?:\s[A-Z][a-zA-Z.]+)?),\s(A[LKZR]|C[AOT]|D[EC]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\s\d{5}\b/,
+    );
     if (m) {
       // "123 Main Drive Wauwatosa, WI" captures the street suffix too; drop it.
-      const city = m[1].replace(/^(?:(?:Drive|Dr\.?|Road|Rd\.?|Street|St\.?|Avenue|Ave\.?|Blvd\.?|Boulevard|Lane|Ln\.?|Way|Hwy|Highway|Suite|Ste\.?|Court|Ct\.?|Parkway|Pkwy\.?|Place|Pl\.?)\s+)+/, "");
+      const city = m[1].replace(
+        /^(?:(?:Drive|Dr\.?|Road|Rd\.?|Street|St\.?|Avenue|Ave\.?|Blvd\.?|Boulevard|Lane|Ln\.?|Way|Hwy|Highway|Suite|Ste\.?|Court|Ct\.?|Parkway|Pkwy\.?|Place|Pl\.?)\s+)+/,
+        "",
+      );
       if (city) {
-        return { value: `${city}, ${m[2]}`, evidence: { method: "stated", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+        return {
+          value: `${city}, ${m[2]}`,
+          evidence: {
+            method: "stated",
+            confidence: "medium",
+            source: p.url,
+            snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+          },
+        };
       }
     }
   }
@@ -297,15 +428,24 @@ function findLocation(pages: PageFacts[]): Found<string> {
 }
 
 function findFounded(pages: PageFacts[], nowYear: number): Found<number> {
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const fd = ld.foundingDate;
-    if (typeof fd === "string" || typeof fd === "number") {
-      const y = parseInt(String(fd).slice(0, 4), 10);
-      if (y > 1800 && y <= nowYear) {
-        return { value: y, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org foundingDate: ${fd}` } };
+  for (const p of pages)
+    for (const ld of p.jsonLd) {
+      const fd = ld.foundingDate;
+      if (typeof fd === "string" || typeof fd === "number") {
+        const y = parseInt(String(fd).slice(0, 4), 10);
+        if (y > 1800 && y <= nowYear) {
+          return {
+            value: y,
+            evidence: {
+              method: "structured",
+              confidence: "high",
+              source: p.url,
+              snippet: `schema.org foundingDate: ${fd}`,
+            },
+          };
+        }
       }
     }
-  }
   // Pages mention several "since YYYY" milestones; the oldest is usually the founding.
   let oldest: Found<number> = null;
   for (const p of pages) {
@@ -313,7 +453,15 @@ function findFounded(pages: PageFacts[], nowYear: number): Found<number> {
       const y = parseInt(m[1], 10);
       if (y < 1800 || y > nowYear) continue;
       if (!oldest || y < oldest.value) {
-        oldest = { value: y, evidence: { method: "stated", confidence: "high", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+        oldest = {
+          value: y,
+          evidence: {
+            method: "stated",
+            confidence: "high",
+            source: p.url,
+            snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+          },
+        };
       }
     }
   }
@@ -322,7 +470,15 @@ function findFounded(pages: PageFacts[], nowYear: number): Found<number> {
     const m = p.text.match(YEARS_RE);
     if (m && +m[1] < 200) {
       // "Over 30 years" is a lower bound, not a founding date.
-      return { value: nowYear - parseInt(m[1], 10), evidence: { method: "inferred", confidence: "low", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+      return {
+        value: nowYear - parseInt(m[1], 10),
+        evidence: {
+          method: "inferred",
+          confidence: "low",
+          source: p.url,
+          snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+        },
+      };
     }
   }
   return null;
@@ -331,27 +487,57 @@ function findFounded(pages: PageFacts[], nowYear: number): Found<number> {
 function findPattern(pages: PageFacts[], re: RegExp): Found<true> {
   for (const p of pages) {
     const m = p.text.match(re);
-    if (m) return { value: true, evidence: { method: "stated", confidence: "high", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+    if (m)
+      return {
+        value: true,
+        evidence: {
+          method: "stated",
+          confidence: "high",
+          source: p.url,
+          snippet: excerpt(p.text, m.index ?? 0, m[0].length),
+        },
+      };
   }
   return null;
 }
 
 function findName(pages: PageFacts[], domain: string): { value: string; evidence: Evidence } {
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const types = ([] as unknown[]).concat(ld["@type"] ?? []).map(String);
-    const isOrg = types.some((t) => /Organization|Business|Corporation|Store|Restaurant/i.test(t) || t in SCHEMA_INDUSTRY);
-    if (typeof ld.name === "string" && ld.name.trim() && isOrg) {
-      return { value: ld.name, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org name: ${ld.name}` } };
+  for (const p of pages)
+    for (const ld of p.jsonLd) {
+      const types = ([] as unknown[]).concat(ld["@type"] ?? []).map(String);
+      const isOrg = types.some(
+        (t) => /Organization|Business|Corporation|Store|Restaurant/i.test(t) || t in SCHEMA_INDUSTRY,
+      );
+      if (typeof ld.name === "string" && ld.name.trim() && isOrg) {
+        return {
+          value: ld.name,
+          evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org name: ${ld.name}` },
+        };
+      }
     }
-  }
   const home = pages[0];
-  if (home.siteName) return { value: home.siteName, evidence: { method: "stated", confidence: "high", source: home.url, snippet: `og:site_name: ${home.siteName}` } };
+  if (home.siteName)
+    return {
+      value: home.siteName,
+      evidence: { method: "stated", confidence: "high", source: home.url, snippet: `og:site_name: ${home.siteName}` },
+    };
   const title = home.title.split(/\s[|–—-]\s|:\s/)[0]?.trim();
   if (title && title.length <= 60 && !/^(home\s?page|home|welcome|index|untitled)$/i.test(title)) {
-    return { value: title, evidence: { method: "inferred", confidence: "medium", source: home.url, snippet: `Page title: ${home.title.slice(0, 100)}` } };
+    return {
+      value: title,
+      evidence: {
+        method: "inferred",
+        confidence: "medium",
+        source: home.url,
+        snippet: `Page title: ${home.title.slice(0, 100)}`,
+      },
+    };
   }
   const base = domain.split(".")[0];
-  return { value: base.charAt(0).toUpperCase() + base.slice(1), evidence: { method: "inferred", confidence: "low", source: home.url, snippet: `Derived from domain ${domain}` } };
+  return {
+    value: base.charAt(0).toUpperCase() + base.slice(1),
+    evidence: { method: "inferred", confidence: "low", source: home.url, snippet: `Derived from domain ${domain}` },
+  };
 }
 
 /**
@@ -367,7 +553,8 @@ export function analyzePages(domain: string, pages: PageFacts[], nowYear = new D
   evidence.name = name.evidence;
 
   const descPage = pages.find((p) => p.description);
-  if (descPage) evidence.description = { method: "stated", confidence: "high", source: descPage.url, snippet: "Meta description" };
+  if (descPage)
+    evidence.description = { method: "stated", confidence: "high", source: descPage.url, snippet: "Meta description" };
 
   const industry = findIndustry(pages);
   if (industry) evidence.industry = industry.evidence;
@@ -386,12 +573,17 @@ export function analyzePages(domain: string, pages: PageFacts[], nowYear = new D
   }
   if (owner) evidence.ownerOperated = owner.evidence;
 
-  const copyrightYears = [...allText.matchAll(/(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})/gi)].map((m) => +m[1]).filter((y) => y <= nowYear);
+  const copyrightYears = [...allText.matchAll(/(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})/gi)]
+    .map((m) => +m[1])
+    .filter((y) => y <= nowYear);
 
   const emailFinds = pages.flatMap((p) => p.emails.map((address) => ({ address, source: p.url })));
-  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.email === "string") emailFinds.push({ address: ld.email, source: p.url });
+  for (const p of pages)
+    for (const ld of p.jsonLd) if (typeof ld.email === "string") emailFinds.push({ address: ld.email, source: p.url });
   const phoneFinds = pages.flatMap((p) => p.phones.map((raw) => ({ raw, source: p.url })));
-  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.telephone === "string") phoneFinds.unshift({ raw: ld.telephone, source: p.url });
+  for (const p of pages)
+    for (const ld of p.jsonLd)
+      if (typeof ld.telephone === "string") phoneFinds.unshift({ raw: ld.telephone, source: p.url });
 
   return {
     name: name.value,
@@ -408,18 +600,25 @@ export function analyzePages(domain: string, pages: PageFacts[], nowYear = new D
     signals: {
       familyOwned: Boolean(family),
       ownerOperated: Boolean(owner),
-      hiring: pages.some((p) => p.links.some((l) => /careers|jobs|join-our-team|we're hiring|now hiring/i.test(l.href + " " + l.text))),
+      hiring: pages.some((p) =>
+        p.links.some((l) => /careers|jobs|join-our-team|we're hiring|now hiring/i.test(l.href + " " + l.text)),
+      ),
       ecommerce: detectEcommerce(pages, allText, allHtml),
-      onlineBooking: /book (an |your )?(appointment|online|now)|schedule (service|online|an appointment)|calendly\.com/i.test(allText + allHtml),
+      onlineBooking:
+        /book (an |your )?(appointment|online|now)|schedule (service|online|an appointment)|calendly\.com/i.test(
+          allText + allHtml,
+        ),
     },
     evidence,
     thinContent: allText.length < 400,
   };
 }
 
-const COMMERCE_PLATFORMS = /cdn\.shopify\.com|myshopify\.com|cdn\d*\.bigcommerce\.com|demandware\.(static|store|net)|\/on\/demandware\.|woocommerce|mage\/cookies|Magento_|squarespace-commerce|ecwid\.com|snipcart/i;
+const COMMERCE_PLATFORMS =
+  /cdn\.shopify\.com|myshopify\.com|cdn\d*\.bigcommerce\.com|demandware\.(static|store|net)|\/on\/demandware\.|woocommerce|mage\/cookies|Magento_|squarespace-commerce|ecwid\.com|snipcart/i;
 const CART_PATH = /\/(cart|basket|bag|checkout|shopping-?cart)(\/|\?|#|$)/i;
-const CART_TEXT = /\b(add to (cart|bag|basket)|shopping (cart|bag)|view (cart|bag)|checkout|free shipping on orders)\b/i;
+const CART_TEXT =
+  /\b(add to (cart|bag|basket)|shopping (cart|bag)|view (cart|bag)|checkout|free shipping on orders)\b/i;
 
 /**
  * Online store detection. Large retailers often render the cart with
@@ -430,7 +629,11 @@ export function detectEcommerce(pages: PageFacts[], allText: string, allHtml: st
   if (CART_TEXT.test(allText) || COMMERCE_PLATFORMS.test(allHtml)) return true;
   return pages.some((p) =>
     p.links.some((l) => {
-      try { return CART_PATH.test(new URL(l.href, p.url).pathname); } catch { return false; }
+      try {
+        return CART_PATH.test(new URL(l.href, p.url).pathname);
+      } catch {
+        return false;
+      }
     }),
   );
 }
@@ -442,7 +645,8 @@ const SUBPAGE_HINT = /\b(about|contact|team|our-story|story|company|leadership|w
 export async function enrichDomain(domain: string): Promise<Enrichment> {
   const base = `https://${domain}`;
   const robotsRes = await safeFetch(`${base}/robots.txt`);
-  const robots = robotsRes && /text\/plain/i.test(robotsRes.contentType) ? parseRobots(robotsRes.body) : { allow: [], disallow: [] };
+  const robots =
+    robotsRes && /text\/plain/i.test(robotsRes.contentType) ? parseRobots(robotsRes.body) : { allow: [], disallow: [] };
 
   const blockedByRobots: string[] = [];
   if (!robotsAllows(robots, "/")) blockedByRobots.push("/");
@@ -466,9 +670,14 @@ export async function enrichDomain(domain: string): Promise<Enrichment> {
       if (SUBPAGE_HINT.test(u.pathname) || SUBPAGE_HINT.test(l.text)) {
         candidates.set(key, /contact/i.test(u.pathname + l.text) ? 0 : 1);
       }
-    } catch { /* ignore malformed hrefs */ }
+    } catch {
+      /* ignore malformed hrefs */
+    }
   }
-  const subpages = [...candidates].sort((a, b) => a[1] - b[1]).map(([u]) => u).slice(0, MAX_PAGES - 1);
+  const subpages = [...candidates]
+    .sort((a, b) => a[1] - b[1])
+    .map(([u]) => u)
+    .slice(0, MAX_PAGES - 1);
   const allowed = subpages.filter((u) => {
     const ok = robotsAllows(robots, new URL(u).pathname);
     if (!ok) blockedByRobots.push(new URL(u).pathname);

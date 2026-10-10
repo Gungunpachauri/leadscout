@@ -6,7 +6,10 @@ import { makeEnrichment, strongLead } from "./fixtures";
 
 describe("AI payload", () => {
   it("splits website signals into detected / not detected instead of true/false", () => {
-    const d = { ...strongLead(), signals: { familyOwned: true, ownerOperated: false, hiring: false, ecommerce: false, onlineBooking: false } };
+    const d = {
+      ...strongLead(),
+      signals: { familyOwned: true, ownerOperated: false, hiring: false, ecommerce: false, onlineBooking: false },
+    };
     const p = buildPayload(d, scoreLead(d, DEFAULT_ICP, 2026), DEFAULT_ICP, {});
     const ws = p.company.websiteSignals;
     expect(ws.detected).toEqual(["family-owned wording"]);
@@ -19,7 +22,12 @@ describe("AI payload", () => {
   it("spells out unknown facts", () => {
     const d = makeEnrichment();
     const c = buildPayload(d, scoreLead(d, DEFAULT_ICP, 2026), DEFAULT_ICP, {}).company;
-    expect([c.industry, c.location, c.foundedYear, c.decisionMakers]).toEqual(["Unknown", "Unknown", "Unknown", "Unknown"]);
+    expect([c.industry, c.location, c.foundedYear, c.decisionMakers]).toEqual([
+      "Unknown",
+      "Unknown",
+      "Unknown",
+      "Unknown",
+    ]);
   });
 });
 

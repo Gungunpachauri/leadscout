@@ -21,7 +21,8 @@ export interface Evidence {
   snippet: string;
 }
 
-export type FactKey = "name" | "description" | "industry" | "location" | "foundedYear" | "familyOwned" | "ownerOperated";
+export type FactKey =
+  "name" | "description" | "industry" | "location" | "foundedYear" | "familyOwned" | "ownerOperated";
 
 /** Mail-domain readiness only. An MX record does not prove a mailbox exists. */
 export type EmailStatus = "mx-ok" | "no-mx";

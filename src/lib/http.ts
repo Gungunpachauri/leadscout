@@ -11,7 +11,8 @@ import net, { type LookupFunction } from "node:net";
 import zlib from "node:zlib";
 import type { Readable } from "node:stream";
 
-export const USER_AGENT = "LeadScoutBot/1.0 (+https://github.com/Gungunpachauri/leadscout; polite B2B research crawler)";
+export const USER_AGENT =
+  "LeadScoutBot/1.0 (+https://github.com/Gungunpachauri/leadscout; polite B2B research crawler)";
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 1_500_000;
 const MAX_REDIRECTS = 4;
@@ -21,7 +22,10 @@ export function isPrivateIp(ip: string): boolean {
   if (net.isIPv4(ip)) {
     const [a, b] = ip.split(".").map(Number);
     return (
-      a === 0 || a === 10 || a === 127 || a >= 224 ||
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      a >= 224 ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
@@ -31,7 +35,14 @@ export function isPrivateIp(ip: string): boolean {
   }
   const v6 = ip.toLowerCase();
   if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice(7));
-  return v6 === "::1" || v6 === "::" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80") || v6.startsWith("ff");
+  return (
+    v6 === "::1" ||
+    v6 === "::" ||
+    v6.startsWith("fc") ||
+    v6.startsWith("fd") ||
+    v6.startsWith("fe80") ||
+    v6.startsWith("ff")
+  );
 }
 
 class BlockedError extends Error {
@@ -64,7 +75,8 @@ export function urlAllowed(raw: string): URL | null {
   const host = u.hostname.replace(/^\[|\]$/g, "");
   // IP literals skip DNS lookup entirely, so check them here.
   if (net.isIP(host) && isPrivateIp(host)) return null;
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return null;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal"))
+    return null;
   return u;
 }
 

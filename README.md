@@ -1,74 +1,115 @@
 # LeadScout
 
-**Acquisition-fit lead scoring for SaaSquatch leads.**
-SaaSquatch finds companies. LeadScout tells a searcher or PE buyer **which ones to call first, and why**.
+**Acquisition-fit lead scoring for SaaSquatch leads.** SaaSquatch finds companies; LeadScout tells a searcher or PE
+buyer **which ones to contact first, and why**.
 
-**Live demo:** https://leadscout-liart.vercel.app (click **Try sample**, about 3s)
+- **Live demo:** https://leadscout-liart.vercel.app (click **Try sample**, about 3 seconds)
+- **Approach:** _Quality First_. One feature, lead qualification, built to be accurate, explainable and fast.
 
-## What it does
+## Business use case
 
-1. **Import:** upload a SaaSquatch CSV, drag and drop, or paste domains. URLs and emails are normalised, duplicates merged and invalid rows reported.
-2. **Enrich:** reads each company's public site (homepage plus up to 3 About/Contact/Team pages) and extracts founding year, ownership, decision-maker, industry, location, contacts and site signals. **Every fact carries evidence:** source page, quoted text, *structured / stated / inferred*, and a confidence level. Missing facts show as *Unknown*.
-3. **Validate:** email syntax and domain MX checks (mailboxes are not verified), role vs named inbox, phone normalisation.
-4. **Score:** a transparent 0–100 acquisition-fit score with reasons and caveats for every point, plus **next best actions** (e.g. *Identify the owner*, *Confirm founding year*).
-5. **Buy-box:** set target industries, keywords, minimum years and preferred traits. The list **re-ranks instantly**, with no re-crawl.
-6. **Act:** filter, search and sort, then export the current view to **CSV** or **HubSpot**. Optional **AI brief** (Gemini or Claude) writes a thesis, diligence questions and an owner email grounded in the evidence.
+Caprae acquires established, owner-operated businesses and grows them with operations and AI. A raw lead list doesn't
+reflect that thesis: a 1975 family business with an owner's email beats a two-year-old startup with an `info@` inbox.
+LeadScout encodes that judgement so a buyer spends time on the top of the list:
 
-*Approach:* **Quality First.** Rather than adding many small tools, it makes qualification, the step that decides which leads become conversations, excellent and explainable.
+1. **Import** a SaaSquatch CSV (or paste domains). URLs and emails are normalised, duplicates merged, invalid rows reported.
+2. **Enrich** each company from its public website: founding year, ownership, decision-maker, industry, location,
+   contacts and site signals. **Every fact carries evidence** (source page, quote, stated vs inferred, confidence).
+3. **Validate** contacts: email syntax and domain MX checks, role vs named inbox, phone normalisation.
+4. **Score** 0–100 for acquisition fit, with the reason for every point and a **next best action** per lead.
+5. **Tune** a buy-box (industries, keywords, minimum years, preferences). The ranking updates instantly.
+6. **Act:** filter, export the current view to **CSV or HubSpot**, or generate an optional **AI brief** with a thesis,
+   diligence questions and an owner email.
 
-## Scoring
+### Scoring
 
-| Component | Max | Based on |
-|---|---:|---|
-| Reachability | 35 | Mail-ready email, named inbox, phone, decision-maker, LinkedIn |
-| Acquisition fit | 40 | Years in business, stated family/owner ownership, long tenure, observed digital upside |
-| Buy-box match | 15 | Your industries, keywords and preferences (neutral when unset) |
-| Data confidence | 10 | How many key facts are backed by evidence, and how strongly |
+| Component       | Max | Based on                                                                  |
+| --------------- | --: | ------------------------------------------------------------------------- |
+| Reachability    |  35 | Mail-ready email, named inbox, phone, decision-maker, LinkedIn            |
+| Acquisition fit |  40 | Years in business, stated ownership, long tenure, observed digital upside |
+| Buy-box match   |  15 | User's industries, keywords and preferences (neutral when unset)          |
+| Data confidence |  10 | How many key facts are backed by evidence, and how strongly               |
 
-Tiers: **A** 70+ · **B** 50–69 · **C** 30–49 · **D** <30. Weights live in one `SCORING` config (`src/lib/score.ts`).
-The score is heuristic fit, **not** a prediction that a company is for sale. Inferred facts score lower than stated ones, and "not detected" is never treated as "no".
+Tiers: **A** 70+ · **B** 50–69 · **C** 30–49 · **D** below 30. All weights live in one config (`src/lib/score.ts`).
+The score measures heuristic fit, not likelihood of a sale. Inferred facts count less than stated ones, and a signal
+the crawler did not find is treated as unknown, never as "no".
 
-## Stack and architecture
+## UX design choices
 
-**Next.js 15 · React 19 · TypeScript · Tailwind v4 · Cheerio · Zod · libSQL · Vitest**, deployed serverless on **Vercel**.
+- **One focused workspace.** An empty state with a single import box, then a ranked list. Settings (buy-box) and detail
+  live in slide-over panels so the list stays uncluttered.
+- **Explain, don't just rank.** Hovering a score shows its four components; the detail panel shows the score as a sum,
+  the evidence behind each fact, caveats, and what to investigate next.
+- **Honest data.** Unknown values say _Unknown_; estimates are marked `~`; email checks show syntax, MX and "mailbox not
+  verified" separately.
+- **Fast feedback.** Live per-row progress, instant re-ranking, toasts that report merges and invalid rows, and clear
+  error messages with retry.
+- **Accessible and responsive.** Keyboard-navigable rows, tabs and dialogs; light and dark themes; mobile layout.
+
+## Architecture
 
 ```
-Browser: import → 4-way enrichment queue → scoreLead() (pure, instant) → filters / export
-   │ POST /api/enrich                         │ POST /api/brief (optional)
-Server: cache (7 days) → robots.txt → crawl ≤4 pages → extract evidence → MX check
-                                                    Gemini / Claude → validated JSON
+Browser (Next.js client)                       Server (Next.js route handlers, Node.js runtime)
+import → normalise → dedupe                     POST /api/enrich
+4 concurrent enrichment requests  ───────────▶  validate (Zod) → cache lookup → robots.txt
+scoreLead() runs client-side (pure)             → fetch ≤ 4 pages (SSRF-guarded) → extract evidence → MX check
+filters · sort · CSV/HubSpot export             POST /api/brief (optional) → Gemini or Claude → validated JSON
 ```
 
-- **Cache:** results keyed by domain for 7 days. SQLite locally, Turso in production (falls back to `/tmp` or memory). The lead list persists in the browser.
-- **Security:** private-IP blocking inside the DNS lookup (no rebinding window), every redirect re-checked, ports 80/443 only, timeouts and size caps, Zod-validated inputs, keys server-side only.
-- **Ethics:** public sites only, robots.txt honoured, identifies as a bot, no LinkedIn scraping.
+| Concern       | Choice                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend      | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4, lucide icons                                                                                  |
+| Backend       | Next.js route handlers on the Node.js runtime; Cheerio for HTML parsing; Zod for input/output validation                                                      |
+| Data storage  | libSQL: SQLite file locally, **Turso** (hosted libSQL) in production; lead list persisted in the browser                                                      |
+| Caching       | Enrichment cached per domain for 7 days with schema versioning; MX lookups memoised; in-memory fallback                                                       |
+| Performance   | One domain per request (short serverless calls), 4 in parallel; 8s timeout and 1.5 MB cap per page; scoring is client-side so buy-box changes need no network |
+| Hosting       | **Serverless** on **Vercel**: the dashboard is statically prerendered; the two API routes run as Node.js functions                                            |
+| Deployment    | Vercel CLI (`vercel deploy --prod`) or Git integration; GitHub Actions runs typecheck, lint, format, tests and build on every push                            |
+| AI (optional) | Google Gemini (free tier) or Anthropic Claude, with structured JSON output                                                                                    |
+| Testing       | Vitest (65 tests: normalisation, scoring, export, extraction, SSRF guard)                                                                                     |
 
-## Run locally
+**Security and ethics:** private and loopback IPs are blocked inside the DNS lookup (no DNS-rebinding window), every
+redirect is re-validated, only ports 80/443 are allowed, API keys stay server-side, and inputs are size-limited. The
+crawler reads public pages only, honours robots.txt, identifies itself as a bot and does not scrape LinkedIn.
 
-Requires Node.js 20+.
+## Setup
+
+Requires **Node.js 20+**.
 
 ```bash
+git clone https://github.com/Gungunpachauri/leadscout.git
+cd leadscout
 npm install
-npm run dev        # http://localhost:3000
-npm test           # 65 tests, no network needed
+npm run dev
 ```
 
-On Windows PowerShell, if scripts are blocked, use `npm.cmd run dev`.
+Open http://localhost:3000 and click **Try sample**. (Windows PowerShell with scripts disabled: use `npm.cmd run dev`.)
 
-**Optional `.env.local`** (copy from `.env.example`):
+Optional environment variables (copy `.env.example` to `.env.local`). The app works fully without them.
 
-| Variable | Purpose |
-|---|---|
-| `GEMINI_API_KEY` | AI briefs via Gemini (free tier: aistudio.google.com/apikey) |
-| `ANTHROPIC_API_KEY` | AI briefs via Claude (used if both keys are set) |
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Durable production cache |
+| Variable                                 | Purpose                                                     |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `GEMINI_API_KEY`                         | AI briefs via Gemini (free key: aistudio.google.com/apikey) |
+| `ANTHROPIC_API_KEY`                      | AI briefs via Claude (takes precedence if both are set)     |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Durable production cache                                    |
 
-Without any keys the app is fully functional: rules-based scoring and template emails.
+| Command                       | Purpose                         |
+| ----------------------------- | ------------------------------- |
+| `npm test`                    | Run the test suite (no network) |
+| `npm run typecheck` / `lint`  | Static checks                   |
+| `npm run format`              | Format with Prettier            |
+| `npm run build` / `npm start` | Production build and serve      |
 
-## Limitations
+## Dataset
 
-- Extraction is heuristic; the evidence labels make every fact quick to verify.
-- JavaScript-only sites yield little data (flagged in the UI).
-- MX checks the email domain, not the individual mailbox.
+`public/sample-leads.csv` mimics a SaaSquatch export: four real, long-established brands with public websites (from a
+tier-A lead to a low-fit one), plus one duplicate and one invalid row to demonstrate deduplication and validation. Any
+CSV with a website, domain or email column can be imported.
 
-**Next steps:** mailbox verification, headless-browser fallback, revenue/headcount estimates, direct HubSpot push.
+## Limitations and next steps
+
+- Extraction is heuristic; evidence labels make each fact quick to verify.
+- JavaScript-only websites yield little data (flagged in the UI).
+- MX checks confirm the email domain, not the individual mailbox.
+
+Next: mailbox-level verification, a headless-browser fallback, revenue and headcount estimates, and a direct HubSpot push.

@@ -12,7 +12,10 @@ export function normalizeDomain(raw: string): string | null {
   if (s.includes("@") && !s.includes("/")) s = s.split("@").pop() ?? "";
   s = s.replace(/^[a-z]+:\/\//, "");
   s = s.split(/[/?#\s]/)[0];
-  s = s.replace(/:\d+$/, "").replace(/^www\d?\./, "").replace(/\.$/, "");
+  s = s
+    .replace(/:\d+$/, "")
+    .replace(/^www\d?\./, "")
+    .replace(/\.$/, "");
   return DOMAIN_RE.test(s) ? s : null;
 }
 
