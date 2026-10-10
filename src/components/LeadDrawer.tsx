@@ -392,7 +392,7 @@ export function LeadDrawer({
                 <Button variant="primary" size="sm" className="mt-4" onClick={generate} disabled={!aiEnabled || brief.loading}>
                   {brief.loading ? <><Loader2 size={14} className="animate-spin" /> Writing…</> : "Generate brief"}
                 </Button>
-                {aiEnabled === false && <p className="mt-2 text-[12px] text-muted">Add ANTHROPIC_API_KEY to enable.</p>}
+                {aiEnabled === false && <p className="mt-2 text-[12px] text-muted">Add GEMINI_API_KEY (free tier) or ANTHROPIC_API_KEY to .env.local to enable.</p>}
                 {brief.error && <p className="mt-2 text-[12px] text-danger">{brief.error}</p>}
               </section>
             )}

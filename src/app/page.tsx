@@ -63,6 +63,7 @@ export default function Dashboard() {
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [aiInfo, setAiInfo] = useState<{ provider: string | null; model: string | null }>({ provider: null, model: null });
   const [selected, setSelected] = useState<string | null>(null);
   const [buyBoxOpen, setBuyBoxOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -96,7 +97,10 @@ export default function Dashboard() {
       setSender(saved.sender ?? {});
     }
     setHydrated(true);
-    fetch("/api/brief").then((r) => r.json()).then((j) => setAiEnabled(Boolean(j.enabled))).catch(() => setAiEnabled(false));
+    fetch("/api/brief")
+      .then((r) => r.json())
+      .then((j) => { setAiEnabled(Boolean(j.enabled)); setAiInfo({ provider: j.provider ?? null, model: j.model ?? null }); })
+      .catch(() => setAiEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -289,13 +293,13 @@ export default function Dashboard() {
                 wide
                 content={
                   aiEnabled
-                    ? "Scores are always rule-based and deterministic. AI is enabled only for the optional per-lead brief you request."
-                    : "Scores are rule-based and deterministic; no AI is used to rank leads. Optional AI briefs are off because ANTHROPIC_API_KEY isn't set. Template emails still work."
+                    ? `Scores are always rule-based and deterministic. AI (${aiInfo.provider === "gemini" ? "Google Gemini" : "Anthropic Claude"}, ${aiInfo.model}) is used only for the optional per-lead brief you request.`
+                    : "Scores are rule-based and deterministic; no AI is used to rank leads. Optional AI briefs are off because no GEMINI_API_KEY or ANTHROPIC_API_KEY is set. Template emails still work."
                 }
               >
                 <button type="button" className="mr-1 hidden items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink sm:flex">
                   <span className={cx("h-1.5 w-1.5 rounded-full", aiEnabled ? "bg-tier-a" : "bg-tier-d")} />
-                  {aiEnabled ? "AI briefs on" : "Rules-based · AI off"}
+                  {aiEnabled ? `AI briefs on · ${aiInfo.provider === "gemini" ? "Gemini" : "Claude"}` : "Rules-based · AI off"}
                   <Info size={12} />
                 </button>
               </Tip>

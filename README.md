@@ -34,7 +34,7 @@ The handbook offered *Quality First* or *Quantity Driven*. LeadScout is **Qualit
 | SSRF hardening (DNS-pinned private-IP blocking, per-hop redirect checks, port allow-list) | ✅ Implemented |
 | Zod validation on all API inputs | ✅ Implemented |
 | Automated tests (60) | ✅ Implemented |
-| AI acquisition brief (Claude, structured output) | ⚙️ Optional: needs `ANTHROPIC_API_KEY` |
+| AI acquisition brief (Gemini or Claude, structured output) | ⚙️ Optional: needs `GEMINI_API_KEY` (free tier) or `ANTHROPIC_API_KEY` |
 | Durable enrichment cache in production (Turso) | ⚙️ Optional: needs `TURSO_DATABASE_URL` |
 | Mailbox-level (SMTP) email verification | ❌ Not supported: MX checks the domain only |
 | JavaScript-rendered sites (headless browser) | ❌ Not supported: flagged as "thin content" |
@@ -103,7 +103,7 @@ Keyboard: rows are focusable (Enter opens), tabs use arrow keys, dialogs trap fo
 The **current filtered view** exports to CSV with company, domain, score, tier, each component, industry/founded/ownership **with their evidence labels and source snippet**, contacts, decision-maker, next action, reasons and caveats. A HubSpot-format CSV uses HubSpot's import property names. Values are escaped by PapaParse, cells beginning with `= + - @` are neutralised against spreadsheet formula injection, and a UTF-8 BOM keeps Excel happy.
 
 ### 7. Optional AI brief
-On click, `/api/brief` sends the lead's facts, evidence and score to Claude and gets back a Zod-validated JSON brief: summary, evidence-supported thesis, improvement opportunities, diligence questions, uncertainties, a 1–10 fit rating and a short owner email. The prompt requires separating evidence from hypotheses, writing "Unknown" for missing data, and never inventing names, financials or intent to sell. The model defaults to `claude-opus-5-5` (override with `ANTHROPIC_MODEL`); a server-side refusal fallback is enabled for models that support it. Without a key the app is fully functional and uses a deterministic template email.
+On click, `/api/brief` sends the lead's facts, evidence and score to the configured provider: Google Gemini (free tier, `interactions` API with a JSON schema and `store: false`) or Anthropic Claude and gets back a Zod-validated JSON brief: summary, evidence-supported thesis, improvement opportunities, diligence questions, uncertainties, a 1–10 fit rating and a short owner email. The prompt requires separating evidence from hypotheses, writing "Unknown" for missing data, and never inventing names, financials or intent to sell. The model defaults to `claude-opus-5-5` (override with `ANTHROPIC_MODEL`); a server-side refusal fallback is enabled for models that support it. Without a key the app is fully functional and uses a deterministic template email.
 
 ## Architecture
 
@@ -162,8 +162,11 @@ npm run dev                  # http://localhost:3000, then click "Try sample"
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | No | Enables AI briefs |
-| `ANTHROPIC_MODEL` | No | Model for briefs (default `claude-opus-5-5`) |
+| `GEMINI_API_KEY` | No | Enables AI briefs via Google Gemini (free tier; key from aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | No | Gemini model (default `gemini-3.8-flash`) |
+| `ANTHROPIC_API_KEY` | No | Enables AI briefs via Claude (used if both keys are set) |
+| `ANTHROPIC_MODEL` | No | Claude model (default `claude-opus-5-5`) |
+| `AI_PROVIDER` | No | Force `gemini` or `anthropic` |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | No | Durable production cache |
 
 ### Scripts

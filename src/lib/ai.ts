@@ -1,22 +1,52 @@
 // On-demand AI brief for a single lead. Only runs when the user clicks, so API
 // spend tracks the leads someone actually cares about (same idea as
 // SaaSquatch's "only enrich the leads you want" credits).
+//
+// Two interchangeable providers: Anthropic Claude or Google Gemini (which has a
+// free tier). Whichever key is configured is used; AI_PROVIDER can force one.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { AiBrief, Enrichment, IcpSettings, LeadScore } from "./types";
 
-const DEFAULT_MODEL = "claude-opus-5-5";
-// Server-side refusal fallback ("default" routing) is only accepted by these models.
+export type AiProvider = "anthropic" | "gemini";
+
+const DEFAULT_MODELS: Record<AiProvider, string> = {
+  anthropic: "claude-opus-5-5",
+  gemini: "gemini-3.8-flash",
+};
+// Server-side refusal fallback ("default" routing) is only accepted by these Claude models.
 const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
-export function aiModel(): string {
-  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
+const anthropicKey = () => process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+const geminiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+/** The provider to use, or null when no key is configured (rules-only mode). */
+export function aiProvider(): AiProvider | null {
+  const forced = process.env.AI_PROVIDER?.trim().toLowerCase();
+  if (forced === "gemini") return geminiKey() ? "gemini" : null;
+  if (forced === "anthropic") return anthropicKey() ? "anthropic" : null;
+  if (anthropicKey()) return "anthropic";
+  if (geminiKey()) return "gemini";
+  return null;
 }
 
 export function aiEnabled(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  return aiProvider() !== null;
+}
+
+export function aiModel(provider = aiProvider() ?? "anthropic"): string {
+  const override = provider === "gemini" ? process.env.GEMINI_MODEL : process.env.ANTHROPIC_MODEL;
+  return override?.trim() || DEFAULT_MODELS[provider];
+}
+
+/** Provider error with an HTTP status the route can map to a friendly message. */
+export class AiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
 }
 
 const BriefSchema = z.object({
@@ -31,6 +61,7 @@ const BriefSchema = z.object({
     body: z.string().describe("Under 130 words. Warm, specific, no hype. Use the owner's first name only if a decision-maker is supplied."),
   }),
 });
+type BriefOut = z.infer<typeof BriefSchema>;
 
 const SYSTEM = `You are an analyst at a search fund / private equity firm that acquires established, owner-operated small and mid-sized businesses and grows them with operational support and practical AI.
 You receive facts scraped from a company's public website. Each fact may carry evidence with a method ("structured" = schema.org, "stated" = explicit page text, "inferred" = heuristic) and a confidence level.
@@ -41,15 +72,8 @@ Rules:
 - A high score is not evidence the company is for sale.
 - The outreach email expresses genuine interest in the business, asks for a short conversation, and never mentions scraping, scores or succession assumptions.`;
 
-export async function generateBrief(
-  data: Enrichment,
-  score: LeadScore,
-  icp: IcpSettings,
-  sender: { name?: string; firm?: string },
-): Promise<AiBrief> {
-  const client = new Anthropic();
-  const model = aiModel();
-  const payload = {
+function buildPayload(data: Enrichment, score: LeadScore, icp: IcpSettings, sender: { name?: string; firm?: string }) {
+  return {
     company: {
       name: data.name, domain: data.domain, description: data.description, industry: data.industry,
       location: data.location, foundedYear: data.foundedYear, websiteCopyrightYear: data.copyrightYear,
@@ -65,25 +89,75 @@ export async function generateBrief(
     buyerThesis: { targetIndustries: icp.industries, keywords: icp.keywords, minYearsInBusiness: icp.minYears, preferences: icp.prefer },
     sender: { name: sender.name || "[Your Name]", firm: sender.firm || "[Your Firm]" },
   };
+}
 
+async function viaAnthropic(prompt: string, model: string): Promise<{ out: BriefOut; model: string }> {
+  const client = new Anthropic();
   const response = await client.beta.messages.parse({
     model,
     max_tokens: 4000,
     ...(FALLBACK_MODELS.has(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     output_config: { effort: "low", format: betaZodOutputFormat(BriefSchema) },
     system: SYSTEM,
-    messages: [{ role: "user", content: `Lead data:\n${JSON.stringify(payload, null, 2)}` }],
+    messages: [{ role: "user", content: prompt }],
   });
+  if (response.stop_reason === "refusal") throw new AiError("The model declined to write a brief for this lead.", 422);
+  if (!response.parsed_output) throw new AiError("AI response could not be parsed.", 502);
+  return { out: response.parsed_output, model: response.model };
+}
 
-  if (response.stop_reason === "refusal") throw new Error("The model declined to write a brief for this lead.");
-  if (!response.parsed_output) throw new Error("AI response could not be parsed.");
-  const out = response.parsed_output;
+async function viaGemini(prompt: string, model: string): Promise<{ out: BriefOut; model: string }> {
+  const client = new GoogleGenAI({ apiKey: geminiKey() });
+  // Gemini enforces the JSON schema; Zod then validates the result.
+  const { $schema: _ignored, ...schema } = z.toJSONSchema(BriefSchema) as Record<string, unknown>;
+  void _ignored;
+  let interaction;
+  try {
+    interaction = await client.interactions.create({
+      model,
+      system_instruction: SYSTEM,
+      input: prompt,
+      response_format: { type: "text", mime_type: "application/json", schema },
+      store: false,
+    });
+  } catch (err) {
+    const status = Number((err as { status?: number; code?: number }).status ?? (err as { code?: number }).code) || 502;
+    const msg =
+      status === 401 || status === 403 ? "Invalid Gemini API key."
+        : status === 404 ? `Gemini model "${model}" was not found. Check GEMINI_MODEL.`
+          : status === 429 ? "Gemini free-tier rate limit reached. Wait a minute and retry."
+            : `Gemini error (${status}).`;
+    throw new AiError(msg, status === 401 || status === 403 ? 401 : status === 404 ? 400 : status === 429 ? 429 : 502);
+  }
+  const text = interaction.output_text;
+  if (!text) throw new AiError("Gemini returned an empty response.", 502);
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new AiError("Gemini response was not valid JSON.", 502);
+  }
+  const parsed = BriefSchema.safeParse(json);
+  if (!parsed.success) throw new AiError("Gemini response did not match the brief format.", 502);
+  return { out: parsed.data, model };
+}
+
+export async function generateBrief(
+  data: Enrichment,
+  score: LeadScore,
+  icp: IcpSettings,
+  sender: { name?: string; firm?: string },
+): Promise<AiBrief> {
+  const provider = aiProvider();
+  if (!provider) throw new AiError("AI is not configured.", 503);
+  const prompt = `Lead data:\n${JSON.stringify(buildPayload(data, score, icp, sender), null, 2)}`;
+  const { out, model } = provider === "gemini" ? await viaGemini(prompt, aiModel("gemini")) : await viaAnthropic(prompt, aiModel("anthropic"));
   return {
     ...out,
-    fitRating: Math.max(1, Math.min(10, out.fitRating)),
+    fitRating: Math.max(1, Math.min(10, Math.round(out.fitRating))),
     improvementOpportunities: out.improvementOpportunities.slice(0, 3),
     diligenceQuestions: out.diligenceQuestions.slice(0, 4),
     uncertainties: out.uncertainties.slice(0, 3),
-    model: response.model,
+    model,
   };
 }
