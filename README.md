@@ -189,7 +189,7 @@ npx vercel --prod
 Set the optional environment variables in the Vercel project. The two API routes run on the Node.js runtime (`maxDuration` 30s / 60s).
 
 ## Dataset
-`public/sample-leads.csv` mimics a SaaSquatch export: real, long-established brands with public websites, plus a duplicate and an invalid row to demonstrate dedupe and validation.
+`public/sample-leads.csv` mimics a SaaSquatch export. It is kept small for a quick demo: four real, long-established brands with public websites (spanning tier A to a low-fit lead), plus a duplicate and an invalid row to demonstrate dedupe and validation. Import any larger CSV for real use.
 
 ## Known limitations
 - Extraction is heuristic. Evidence labels and snippets exist so a person can check any fact in seconds, but some facts will still be wrong or missing.
