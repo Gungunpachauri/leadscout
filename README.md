@@ -33,7 +33,7 @@ The handbook offered *Quality First* or *Quantity Driven*. LeadScout is **Qualit
 | CSV export (filtered view) and HubSpot-format CSV | ✅ Implemented |
 | SSRF hardening (DNS-pinned private-IP blocking, per-hop redirect checks, port allow-list) | ✅ Implemented |
 | Zod validation on all API inputs | ✅ Implemented |
-| Automated tests (57) | ✅ Implemented |
+| Automated tests (60) | ✅ Implemented |
 | AI acquisition brief (Claude, structured output) | ⚙️ Optional: needs `ANTHROPIC_API_KEY` |
 | Durable enrichment cache in production (Turso) | ⚙️ Optional: needs `TURSO_DATABASE_URL` |
 | Mailbox-level (SMTP) email verification | ❌ Not supported: MX checks the domain only |
@@ -80,7 +80,24 @@ Every component returns **reasons** and **caveats**, shown in the UI and in expo
 `nextActions()` turns gaps and signals into concrete steps, for example *Find a contact route*, *Identify the owner*, *Confirm founding year*, *Verify ownership structure*, *Explore succession plans* or *Prioritise outreach*. Each comes with a one-line reason.
 
 ### 5. Workspace
-Tier tabs with counts, email/phone toggles, a Filters menu (industry, minimum score), search and sortable columns. The detail panel shows the score, next steps, **Key facts with quoted evidence**, the score breakdown with caveats, contacts, and website signals, plus Outreach (AI brief or template email) and Sources tabs.
+Tier tabs with counts, email/phone toggles, a Filters menu (industry, minimum score), search, sortable columns, **Reset view**, and **Retry N failed**. Rows show industry and location, age (`~` = estimated), ownership signals, and email plus phone. Every truncated value has a full-text tooltip, and hovering or keyboard-focusing a score shows its four components.
+
+**Header metrics** are computed from the loaded leads that have been scored (in-progress and failed rows are excluded), using the same buy-box as the table:
+
+| Metric | Definition |
+|---|---|
+| Priority | Leads in tier A (score ≥ 70). Always equals the "A" tab count. |
+| Reachable | Scored leads with an email on a mail-ready (MX) domain, or a phone number |
+| Avg score | Mean score of scored leads under the current buy-box |
+
+The header status reads **"Rules-based · AI off"** when no API key is set: ranking never uses AI; only the optional brief does.
+
+**Detail panel**
+- **Overview:** score with its explicit sum (e.g. `20 + 36 + 8 + 8 = 72`), **Next best actions** with reasons, **Key facts** with quoted evidence, the score breakdown with caveats, contacts (each email shows *syntax valid*, *domain MX ready/missing* and *mailbox not verified* separately), and website signals.
+- **Outreach:** the AI brief, or a deterministic template email.
+- **Sources:** retrieval time and cache status, an evidence summary (structured / stated / inferred counts), facts not found, every claim **grouped under the page it came from** with method, confidence and quote, the contacts found on each page, and whole-site observations (labelled as such, because no single page is recorded for them).
+
+Keyboard: rows are focusable (Enter opens), tabs use arrow keys, dialogs trap focus, Escape closes them, and focus returns to the row that opened the panel.
 
 ### 6. Export
 The **current filtered view** exports to CSV with company, domain, score, tier, each component, industry/founded/ownership **with their evidence labels and source snippet**, contacts, decision-maker, next action, reasons and caveats. A HubSpot-format CSV uses HubSpot's import property names. Values are escaped by PapaParse, cells beginning with `= + - @` are neutralised against spreadsheet formula injection, and a UTF-8 BOM keeps Excel happy.
@@ -154,7 +171,7 @@ npm run dev                  # http://localhost:3000, then click "Try sample"
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server (Turbopack) |
-| `npm test` | Vitest suite (57 tests, no network needed) |
+| `npm test` | Vitest suite (60 tests, no network needed) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run build` / `npm start` | Production build / serve |

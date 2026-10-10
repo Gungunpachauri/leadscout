@@ -103,7 +103,39 @@ describe("scoreLead", () => {
   });
 });
 
+describe("score explanation integrity", () => {
+  it("components always sum to the total, across buy-box changes", () => {
+    const icps: IcpSettings[] = [
+      DEFAULT_ICP,
+      { ...DEFAULT_ICP, industries: ["Home Services"], keywords: ["hvac"] },
+      { ...DEFAULT_ICP, industries: ["Software"], minYears: 60 },
+      { ...DEFAULT_ICP, prefer: { familyOwned: true, ownerOperated: true, directContact: true } },
+    ];
+    for (const d of [strongLead(), makeEnrichment()]) {
+      for (const icp of icps) {
+        const s = scoreLead(d, icp, NOW);
+        expect(s.total).toBe(s.components.reduce((a, c) => a + c.points, 0));
+        expect(s.tier).toBe(tierFor(s.total));
+        expect(s.components.every((c) => c.reasons.length > 0)).toBe(true);
+      }
+    }
+  });
+
+  it("buy-box explanations change together with the points", () => {
+    const miss = comp(scoreLead(strongLead(), { ...DEFAULT_ICP, industries: ["Software"] }, NOW), "icp");
+    const hit = comp(scoreLead(strongLead(), { ...DEFAULT_ICP, industries: ["Home Services"] }, NOW), "icp");
+    expect(miss.reasons.join()).toMatch(/not a target industry/);
+    expect(hit.reasons.join()).toMatch(/Target industry: Home Services/);
+  });
+});
+
 describe("nextActions", () => {
+  it("never asserts a sale or retirement", () => {
+    const d = strongLead();
+    const text = nextActions(d, scoreLead(d, DEFAULT_ICP, NOW), NOW).map((a) => `${a.title} ${a.why}`).join(" ");
+    expect(text).not.toMatch(/for sale|retir(e|ing)|wants to sell/i);
+  });
+
   it("asks for a contact route when none exists", () => {
     const d = makeEnrichment();
     expect(nextActions(d, scoreLead(d, DEFAULT_ICP, NOW), NOW)[0].title).toBe("Find a contact route");
@@ -113,7 +145,7 @@ describe("nextActions", () => {
     const d = strongLead();
     const titles = nextActions(d, scoreLead(d, DEFAULT_ICP, NOW), NOW).map((a) => a.title);
     expect(titles[0]).toBe("Prioritise outreach");
-    expect(titles).toContain("Explore succession plans");
+    expect(titles).toContain("Ask about long-term plans");
   });
 
   it("flags missing ownership and longevity evidence", () => {

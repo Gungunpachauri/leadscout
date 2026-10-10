@@ -60,6 +60,7 @@ function Fact({ label, value, evidence }: { label: string; value: string | null;
 }
 
 type Tab = "overview" | "outreach" | "sources";
+const TABS: Tab[] = ["overview", "outreach", "sources"];
 
 export function LeadDrawer({
   lead, score, icp, sender, aiEnabled, onClose, onBrief, onRescrape,
@@ -107,6 +108,40 @@ export function LeadDrawer({
     d.signals.onlineBooking && "Online booking",
   ].filter(Boolean) as string[];
 
+  // Provenance: only claims the scraper actually recorded evidence for.
+  const claims: { label: string; value: string; evidence: Evidence }[] = [];
+  if (ev.name) claims.push({ label: "Company name", value: d.name, evidence: ev.name });
+  if (ev.foundedYear && d.foundedYear) claims.push({ label: "Founded", value: `${ev.foundedYear.method === "inferred" ? "≈" : ""}${d.foundedYear}`, evidence: ev.foundedYear });
+  if (ev.familyOwned) claims.push({ label: "Ownership", value: "Family-owned", evidence: ev.familyOwned });
+  if (ev.ownerOperated) claims.push({ label: "Ownership", value: "Owner-operated", evidence: ev.ownerOperated });
+  for (const p of d.people) claims.push({ label: "Decision-maker", value: `${p.name} · ${p.title}`, evidence: p.evidence });
+  if (ev.industry && d.industry) claims.push({ label: "Industry", value: d.industry, evidence: ev.industry });
+  if (ev.location && d.location) claims.push({ label: "Location", value: d.location, evidence: ev.location });
+  if (ev.description) claims.push({ label: "Description", value: "From the site's meta description", evidence: ev.description });
+
+  const unknown = [
+    !d.foundedYear && "founding year",
+    !(ev.familyOwned ?? ev.ownerOperated) && "ownership",
+    !d.people.length && "decision-maker",
+    !d.industry && "industry",
+    !d.location && "location",
+    !d.emails.length && "email",
+    !d.phones.length && "phone",
+  ].filter(Boolean) as string[];
+
+  const norm = (u: string) => u.replace(/\/$/, "");
+  const pageUrls = [...new Set([...d.pagesCrawled, ...claims.map((c) => c.evidence.source)].map(norm))];
+  const byPage = pageUrls.map((url) => ({
+    url,
+    items: claims.filter((c) => norm(c.evidence.source) === url),
+    contacts: [
+      ...d.emails.filter((e) => norm(e.source) === url).map((e) => e.address),
+      ...d.phones.filter((p) => norm(p.source) === url).map((p) => p.display),
+    ],
+  }));
+  const evidenceCount = claims.length;
+  const retrievedAt = new Date(d.scrapedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
   return (
     <Sheet open onClose={onClose} label={`${d.name} details`} width={580}>
       {/* Header */}
@@ -121,26 +156,44 @@ export function LeadDrawer({
               </a>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="-mr-2 rounded-lg p-1.5 text-muted hover:bg-hover hover:text-ink">
+          <button data-autofocus onClick={onClose} aria-label="Close details" className="-mr-2 rounded-lg p-1.5 text-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-ink">
             <X size={18} />
           </button>
         </div>
         {d.description && <p className="mt-4 text-[13.5px] leading-relaxed text-muted">{d.description}</p>}
 
-        <nav className="mt-5 flex gap-5 border-b border-line text-[13px]">
-          {(["overview", "outreach", "sources"] as Tab[]).map((t) => (
+        <div
+          role="tablist"
+          aria-label="Lead details"
+          className="mt-5 flex gap-5 border-b border-line text-[13px]"
+          onKeyDown={(e) => {
+            const i = TABS.indexOf(tab);
+            const next = e.key === "ArrowRight" ? TABS[(i + 1) % TABS.length] : e.key === "ArrowLeft" ? TABS[(i + TABS.length - 1) % TABS.length] : null;
+            if (next) {
+              e.preventDefault();
+              setTab(next);
+              document.getElementById(`tab-${next}`)?.focus();
+            }
+          }}
+        >
+          {TABS.map((t) => (
             <button
               key={t}
+              id={`tab-${t}`}
+              role="tab"
+              aria-selected={tab === t}
+              aria-controls={`panel-${t}`}
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => setTab(t)}
-              className={cx("-mb-px border-b-2 pb-2.5 capitalize transition-colors", tab === t ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}
+              className={cx("-mb-px rounded-t border-b-2 pb-2.5 capitalize transition-colors focus-visible:outline-2 focus-visible:outline-ink", tab === t ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink")}
             >
-              {t}
+              {t}{t === "sources" && <span className="ml-1 font-normal text-muted">{evidenceCount}</span>}
             </button>
           ))}
-        </nav>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-7 py-6">
+      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex-1 overflow-y-auto px-7 py-6">
         {tab === "overview" && (
           <div className="anim-fade space-y-8">
             {d.thinContent && (
@@ -157,15 +210,20 @@ export function LeadDrawer({
                 <div>
                   <div className="text-[15px] font-semibold" style={{ color: TIER_COLOR[score.tier] }}>{TIER_LABEL[score.tier]}</div>
                   <div className="text-[13px] text-muted">Tier {score.tier} · {score.total} of 100</div>
+                  <div className="mt-0.5 font-mono text-[12px] tabular-nums text-muted" aria-label="Score components">
+                    {score.components.map((c) => c.points).join(" + ")} = {score.total}
+                  </div>
                 </div>
               </div>
-              <p className="mt-3 text-[12px] text-muted">Heuristic acquisition fit. Not a prediction that the company is for sale.</p>
+              <p className="mt-3 text-[12px] text-muted">
+                Heuristic acquisition fit under your current buy-box. Not a prediction that the company is for sale or that the owner plans to retire.
+              </p>
             </section>
 
-            {/* Next steps */}
+            {/* Next best actions */}
             {actions.length > 0 && (
               <section>
-                <Label>Next steps</Label>
+                <Label>Next best actions</Label>
                 <ol className="space-y-2.5">
                   {actions.map((a, i) => (
                     <li key={a.title} className="flex gap-3 text-[13px]">
@@ -244,15 +302,27 @@ export function LeadDrawer({
                     </li>
                   ))}
                   {d.emails.map((e) => (
-                    <li key={e.address} className="group flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
-                      <Mail size={15} strokeWidth={1.75} className={e.status === "mx-ok" ? "text-tier-a" : "text-danger"} />
-                      <span className="min-w-0 flex-1 truncate">{e.address}</span>
-                      <span className="text-[11.5px] text-muted" title={e.status === "mx-ok" ? "Domain accepts mail. Mailbox not verified." : "Domain has no mail servers"}>
-                        {e.status !== "mx-ok" ? "No MX" : e.isRole ? "Role inbox" : "Direct"}
-                      </span>
-                      <button onClick={() => copy(e.address, e.address)} aria-label="Copy email" className="rounded p-1 text-muted opacity-0 hover:bg-hover hover:text-ink focus:opacity-100 group-hover:opacity-100">
-                        {copied === e.address ? <Check size={13} /> : <Copy size={13} />}
-                      </button>
+                    <li key={e.address} className="group px-3.5 py-2.5 text-[13px]">
+                      <div className="flex items-center gap-3">
+                        <Mail size={15} strokeWidth={1.75} className={cx("shrink-0", e.status === "mx-ok" ? "text-tier-a" : "text-danger")} />
+                        <span className="min-w-0 flex-1 break-all">{e.address}</span>
+                        <span className="shrink-0 text-[11.5px] text-muted">{e.isRole ? "Role inbox" : "Named inbox"}</span>
+                        <button onClick={() => copy(e.address, e.address)} aria-label={`Copy ${e.address}`} className="shrink-0 rounded p-1 text-muted opacity-60 hover:bg-hover hover:text-ink focus:opacity-100 group-hover:opacity-100">
+                          {copied === e.address ? <Check size={13} /> : <Copy size={13} />}
+                        </button>
+                      </div>
+                      {/* Three distinct checks; only the first two are actually performed. */}
+                      <div className="ml-[27px] mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-muted">
+                        <span className="inline-flex items-center gap-1"><Check size={11} className="text-tier-a" /> Syntax valid</span>
+                        <span className="inline-flex items-center gap-1" title={e.status === "mx-ok" ? "The domain publishes mail servers (MX)." : "The domain publishes no mail servers."}>
+                          {e.status === "mx-ok" ? <Check size={11} className="text-tier-a" /> : <X size={11} className="text-danger" />}
+                          Domain MX {e.status === "mx-ok" ? "ready" : "missing"}
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="No SMTP check is made, so the specific mailbox may not exist.">
+                          <span aria-hidden className="w-[11px] text-center">–</span> Mailbox not verified
+                        </span>
+                        {!e.onDomain && <span>Off-domain address</span>}
+                      </div>
                     </li>
                   ))}
                   {d.phones.map((p) => (
@@ -265,9 +335,6 @@ export function LeadDrawer({
                     </li>
                   ))}
                 </ul>
-              )}
-              {d.emails.some((e) => e.status === "mx-ok") && (
-                <p className="mt-2 text-[12px] text-muted">Green = the email&apos;s domain accepts mail (MX). Individual mailboxes are not verified.</p>
               )}
               {Object.keys(d.socials).length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
@@ -352,37 +419,94 @@ export function LeadDrawer({
 
         {tab === "sources" && (
           <div className="anim-fade space-y-8">
+            {/* Retrieval */}
+            <section className="flex flex-wrap items-start justify-between gap-3">
+              <div className="text-[13px]">
+                <div className="font-medium">Retrieved {retrievedAt}</div>
+                <div className="mt-0.5 text-[12px] text-muted">
+                  {lead.cached ? "Served from the 7-day cache. " : ""}All {d.pagesCrawled.length} page{d.pagesCrawled.length === 1 ? " was" : "s were"} fetched in this single crawl.
+                </div>
+              </div>
+              <Button size="sm" onClick={() => onRescrape(lead.domain)} disabled={lead.status === "running"}>
+                {lead.status === "running" ? <><Loader2 size={13} className="animate-spin" /> Re-crawling…</> : <><RotateCw size={13} /> Re-crawl</>}
+              </Button>
+              {lead.status === "error" && <p className="w-full text-[12px] text-danger">Re-crawl failed: {lead.error}. Showing the previous data.</p>}
+            </section>
+
+            {/* Summary */}
             <section>
-              <Label>Pages crawled</Label>
-              <ul className="space-y-1.5 text-[13px]">
-                {d.pagesCrawled.map((u) => (
-                  <li key={u}>
-                    <a href={u} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 text-ink-2 hover:text-ink">
-                      <span className="truncate">{u.replace(/^https?:\/\//, "")}</span> <ArrowUpRight size={12} className="shrink-0" />
-                    </a>
-                  </li>
+              <Label>Evidence summary</Label>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {(["structured", "stated", "inferred"] as const).map((m) => (
+                  <div key={m} className="rounded-lg border border-line px-2 py-2.5">
+                    <div className="text-[18px] font-semibold tabular-nums">{claims.filter((c) => c.evidence.method === m).length}</div>
+                    <div className="text-[11.5px] text-muted">{METHOD_LABEL[m]}</div>
+                  </div>
                 ))}
-              </ul>
-              {d.blockedByRobots.length > 0 && (
-                <p className="mt-3 text-[12.5px] text-muted">Skipped per robots.txt: {d.blockedByRobots.join(", ")}</p>
+              </div>
+              {unknown.length > 0 && (
+                <p className="mt-3 text-[12.5px] text-muted">
+                  <span className="font-medium text-ink-2">Not found on crawled pages:</span> {unknown.join(", ")}.
+                </p>
               )}
             </section>
+
+            {/* Claims grouped by the page they came from */}
             <section>
-              <Label>How facts are labelled</Label>
-              <ul className="space-y-1.5 text-[12.5px] text-ink-2">
-                <li><span className="font-medium">Structured data</span>: published by the site in schema.org markup.</li>
-                <li><span className="font-medium">Stated on site</span>: explicit wording, quoted as evidence.</li>
-                <li><span className="font-medium">Inferred</span>: heuristic, e.g. keyword counts or &quot;over 30 years&quot;.</li>
-              </ul>
-            </section>
-            <section>
-              <Label>Freshness</Label>
-              <div className="flex items-center justify-between text-[13px]">
-                <span className="text-ink-2">
-                  {lead.cached ? "Cached · " : ""}{new Date(d.scrapedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                </span>
-                <Button size="sm" onClick={() => onRescrape(lead.domain)}><RotateCw size={13} /> Re-crawl</Button>
+              <Label>Claims by source page</Label>
+              <div className="space-y-4">
+                {byPage.map(({ url, items, contacts }) => (
+                  <div key={url} className="rounded-xl border border-line">
+                    <a href={url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 border-b border-line px-3.5 py-2.5 text-[12.5px] font-medium text-ink-2 hover:text-ink">
+                      <span className="break-all">{url.replace(/^https?:\/\//, "")}</span>
+                      <ArrowUpRight size={13} className="shrink-0" />
+                    </a>
+                    {items.length === 0 && contacts.length === 0 ? (
+                      <p className="px-3.5 py-2.5 text-[12.5px] text-muted">Crawled; no key facts extracted from this page.</p>
+                    ) : (
+                      <ul className="divide-y divide-line">
+                        {items.map((c) => (
+                          <li key={c.label + c.value} className="px-3.5 py-2.5">
+                            <div className="flex items-baseline justify-between gap-3 text-[13px]">
+                              <span><span className="text-muted">{c.label}:</span> {c.value}</span>
+                              <EvidenceTag e={c.evidence} />
+                            </div>
+                            <p className="mt-1 text-[12px] italic leading-[18px] text-muted">{c.evidence.snippet}</p>
+                            <p className="mt-0.5 text-[11px] text-muted">{c.evidence.confidence} confidence</p>
+                          </li>
+                        ))}
+                        {contacts.length > 0 && (
+                          <li className="px-3.5 py-2.5 text-[12.5px]">
+                            <span className="text-muted">Contacts found here:</span> {contacts.join(", ")}
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                ))}
               </div>
+            </section>
+
+            {/* Whole-site observations: no single page is recorded for these. */}
+            <section>
+              <Label>Website observations</Label>
+              <p className="text-[13px] leading-6 text-ink-2">
+                {[...signals, ...d.tech, d.copyrightYear ? `Footer © ${d.copyrightYear}` : null].filter(Boolean).join("  ·  ") || "None detected."}
+              </p>
+              <p className="mt-1 text-[12px] text-muted">Detected across all crawled pages; the individual page is not recorded for these.</p>
+              {d.blockedByRobots.length > 0 && (
+                <p className="mt-2 text-[12px] text-muted">Skipped per robots.txt: {d.blockedByRobots.join(", ")}</p>
+              )}
+            </section>
+
+            <section>
+              <Label>How evidence is labelled</Label>
+              <ul className="space-y-1.5 text-[12.5px] text-ink-2">
+                <li><span className="font-medium">Structured data</span>: published by the site itself in schema.org markup.</li>
+                <li><span className="font-medium">Stated on site</span>: explicit wording, quoted above.</li>
+                <li><span className="font-medium">Inferred</span>: a heuristic such as keyword counts, a person&apos;s title, or &quot;over 30 years&quot;. Treat it as a lead to verify.</li>
+                <li><span className="font-medium">Confidence</span>: high = explicit or structured; medium = clear but indirect; low = weak signal.</li>
+              </ul>
             </section>
           </div>
         )}

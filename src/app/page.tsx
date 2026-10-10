@@ -1,18 +1,24 @@
 "use client";
 
-import { Check, Download, ListFilter, Mail, Phone, Plus, Search, ShieldCheck, SlidersHorizontal, Sparkles, Target, Trash2, X } from "lucide-react";
+import { Check, Download, Info, ListFilter, Mail, Phone, Plus, RotateCcw, RotateCw, Search, ShieldCheck, SlidersHorizontal, Sparkles, Target, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuyBoxSheet } from "@/components/BuyBoxSheet";
 import { Composer } from "@/components/Composer";
 import { LeadDrawer } from "@/components/LeadDrawer";
 import { LeadTable, type Row, type SortKey } from "@/components/LeadTable";
-import { Button, Menu, MenuItem, Modal, TierDot, Toggle, cx } from "@/components/ui";
+import { Button, Menu, MenuItem, Modal, TIER_LABEL, TierDot, Tip, Toggle, cx } from "@/components/ui";
 import { exportCsv, exportHubspot } from "@/lib/export";
 import { dedupeInputs, parseImport } from "@/lib/normalize";
-import { DEFAULT_ICP, scoreLead } from "@/lib/score";
+import { DEFAULT_ICP, SCORING, scoreLead } from "@/lib/score";
 import { ENRICHMENT_VERSION, type IcpSettings, type Lead, type LeadScore } from "@/lib/types";
 
 const CONCURRENCY = 4;
+const TIER_RANGE: Record<LeadScore["tier"], string> = {
+  A: `score ${SCORING.tiers.A}–100`,
+  B: `score ${SCORING.tiers.B}–${SCORING.tiers.A - 1}`,
+  C: `score ${SCORING.tiers.C}–${SCORING.tiers.B - 1}`,
+  D: `score below ${SCORING.tiers.C}`,
+};
 const STORAGE_KEY = "leadscout:v1";
 type Sender = { name?: string; firm?: string };
 type Persisted = { leads: Lead[]; icp: IcpSettings; sender: Sender };
@@ -24,6 +30,17 @@ function load(): Persisted | null {
   } catch {
     return null;
   }
+}
+
+/** Turn API errors into something a user can act on. */
+function friendlyError(raw: string | undefined, status: number): string {
+  if (raw === "Site unreachable") return "Couldn't reach the site (offline, blocking bots, or too slow).";
+  if (raw === "Homepage disallowed by robots.txt") return "The site's robots.txt asks crawlers not to visit, so it was skipped.";
+  if (raw === "Homepage is not HTML") return "The homepage isn't a web page (e.g. a file download).";
+  if (raw === "Not a valid domain") return "Not a valid domain.";
+  if (status === 429) return "Too many requests. Wait a moment and retry.";
+  if (status >= 500) return "Server error while enriching. Retry shortly.";
+  return raw ?? `Request failed (${status}).`;
 }
 
 function Logo() {
@@ -106,11 +123,12 @@ export default function Dashboard() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ domain, refresh }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(friendlyError(json.error, res.status));
       patch(domain, { status: "done", data: json.data, cached: json.cached, ...(refresh ? { ai: undefined } : {}) });
     } catch (e) {
-      patch(domain, { status: "error", error: (e as Error).message });
+      const msg = e instanceof TypeError ? "Network error. Check your connection and retry." : (e as Error).message;
+      patch(domain, { status: "error", error: msg });
     }
   }, [patch]);
 
@@ -174,7 +192,8 @@ export default function Dashboard() {
 
   const scores = useMemo(() => {
     const m = new Map<string, LeadScore>();
-    for (const l of leads) if (l.data) m.set(l.domain, scoreLead(l.data, icp));
+    // Only score data in the current schema; anything older is re-queued on load.
+    for (const l of leads) if (l.data?.version === ENRICHMENT_VERSION) m.set(l.domain, scoreLead(l.data, icp));
     return m;
   }, [leads, icp]);
 
@@ -217,15 +236,41 @@ export default function Dashboard() {
     return [...m].sort((a, b) => (a[0] === "Unknown" ? 1 : b[0] === "Unknown" ? -1 : b[1] - a[1]));
   }, [leads]);
   const activeFilters = (industry ? 1 : 0) + (minScore ? 1 : 0);
+  const anyFilter = Boolean(tier || needEmail || needPhone || industry || minScore || search.trim());
+  const resetView = () => { setTier(null); setNeedEmail(false); setNeedPhone(false); setIndustry(null); setMinScore(0); setSearch(""); };
 
-  const done = leads.filter((l) => l.status === "done");
+  // Metrics are computed over *scored* leads only (in-progress and failed rows are excluded),
+  // using the same scores, and therefore the same buy-box, as the table.
   const pending = leads.filter((l) => l.status === "queued" || l.status === "running").length;
-  const scoredList = [...scores.values()];
+  const failed = leads.filter((l) => l.status === "error");
+  const scoredLeads = leads.filter((l) => scores.has(l.domain));
+  const scoredList = scoredLeads.map((l) => scores.get(l.domain)!);
   const avg = scoredList.length ? Math.round(scoredList.reduce((s, x) => s + x.total, 0) / scoredList.length) : null;
-  const reachable = done.filter((l) => l.data!.emails.some((e) => e.status === "mx-ok") || l.data!.phones.length).length;
+  const reachable = scoredLeads.filter((l) => l.data!.emails.some((e) => e.status === "mx-ok") || l.data!.phones.length).length;
   const exportable = rows.filter((r): r is { lead: Lead; score: LeadScore } => r.score !== null);
   const selectedLead = selected ? leads.find((l) => l.domain === selected) : undefined;
-  const icpCount = icp.industries.length + icp.keywords.length;
+  const icpCount = icp.industries.length + icp.keywords.length + Object.values(icp.prefer ?? {}).filter(Boolean).length;
+  const T = SCORING.tiers;
+  const metrics = [
+    {
+      label: "Priority",
+      value: scoredList.length ? tierCounts.A : "–",
+      sub: `of ${scoredList.length} scored`,
+      tip: `Leads in tier A: score ${T.A}–100 under your current buy-box. Same number as the "A" tab.`,
+    },
+    {
+      label: "Reachable",
+      value: scoredList.length ? reachable : "–",
+      sub: `of ${scoredList.length} scored`,
+      tip: "Scored leads with at least one email on a mail-ready (MX) domain, or a phone number. Mailboxes are not individually verified.",
+    },
+    {
+      label: "Avg score",
+      value: avg ?? "–",
+      sub: "out of 100",
+      tip: "Mean score of scored leads under your current buy-box. In-progress and failed leads are excluded.",
+    },
+  ];
   const progress = leads.length ? (leads.length - pending) / leads.length : 1;
   const onSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "name" ? 1 : -1 }));
   const empty = hydrated && leads.length === 0;
@@ -237,17 +282,31 @@ export default function Dashboard() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Logo />
           <div className="flex items-center gap-1.5">
-            <span className="mr-2 hidden items-center gap-1.5 text-[12px] text-muted sm:flex" title={aiEnabled ? "Claude AI briefs enabled" : "Set ANTHROPIC_API_KEY to enable AI briefs"}>
-              <span className={cx("h-1.5 w-1.5 rounded-full", aiEnabled ? "bg-tier-a" : "bg-tier-d")} />
-              {aiEnabled === null ? "" : aiEnabled ? "AI on" : "Rules only"}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setBuyBoxOpen(true)}>
+            {aiEnabled !== null && (
+              <Tip
+                side="bottom"
+                align="right"
+                wide
+                content={
+                  aiEnabled
+                    ? "Scores are always rule-based and deterministic. AI is enabled only for the optional per-lead brief you request."
+                    : "Scores are rule-based and deterministic; no AI is used to rank leads. Optional AI briefs are off because ANTHROPIC_API_KEY isn't set. Template emails still work."
+                }
+              >
+                <button type="button" className="mr-1 hidden items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink sm:flex">
+                  <span className={cx("h-1.5 w-1.5 rounded-full", aiEnabled ? "bg-tier-a" : "bg-tier-d")} />
+                  {aiEnabled ? "AI briefs on" : "Rules-based · AI off"}
+                  <Info size={12} />
+                </button>
+              </Tip>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setBuyBoxOpen(true)} title="Investment criteria used to score leads">
               <SlidersHorizontal size={15} strokeWidth={1.75} />
               Buy-box
               {icpCount > 0 && <span className="ml-0.5 rounded bg-ink px-1.5 text-[11px] font-semibold leading-[18px] text-bg">{icpCount}</span>}
             </Button>
             {!empty && (
-              <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+              <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} label="Add leads">
                 <Plus size={15} strokeWidth={2} /> <span className="hidden sm:inline">Add leads</span>
               </Button>
             )}
@@ -261,7 +320,13 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 sm:px-6">
-        {!hydrated ? null : empty ? (
+        {!hydrated ? (
+          <div className="pt-10" aria-busy="true" aria-label="Loading">
+            <div className="skeleton h-7 w-28 rounded" />
+            <div className="skeleton mt-3 h-3 w-48 rounded" />
+            <div className="skeleton mt-10 h-72 w-full rounded-2xl" />
+          </div>
+        ) : empty ? (
           /* Empty state */
           <div className="mx-auto max-w-2xl pb-24 pt-20 sm:pt-28">
             <div className="anim-rise text-center">
@@ -303,19 +368,24 @@ export default function Dashboard() {
             <div className="anim-rise flex flex-wrap items-end justify-between gap-x-10 gap-y-6">
               <div>
                 <h1 className="text-[28px] font-semibold tracking-[-0.03em]">Leads</h1>
-                <p className="mt-1 text-[13px] text-muted">
-                  {pending > 0 ? `Enriching ${leads.length - pending} of ${leads.length}…` : `${leads.length} companies · ranked by acquisition fit`}
+                <p className="mt-1 text-[13px] text-muted" aria-live="polite">
+                  {pending > 0
+                    ? `Enriching ${leads.length - pending} of ${leads.length}…`
+                    : `${leads.length} imported · ${scoredList.length} scored${failed.length ? ` · ${failed.length} failed` : ""}`}
                 </p>
               </div>
               <dl className="flex gap-8 sm:gap-12">
-                {[
-                  ["Priority", tierCounts.A + tierCounts.B],
-                  ["Reachable", reachable],
-                  ["Avg score", avg ?? "-"],
-                ].map(([label, value]) => (
-                  <div key={label as string}>
-                    <dt className="text-[12px] text-muted">{label}</dt>
-                    <dd className="mt-0.5 text-[26px] font-semibold tabular-nums tracking-[-0.03em]">{value}</dd>
+                {metrics.map((m) => (
+                  <div key={m.label}>
+                    <dt>
+                      <Tip content={m.tip} wide align="right" side="bottom">
+                        <button type="button" className="inline-flex items-center gap-1 rounded text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-ink">
+                          {m.label} <Info size={11} />
+                        </button>
+                      </Tip>
+                    </dt>
+                    <dd className="mt-0.5 text-[26px] font-semibold leading-8 tabular-nums tracking-[-0.03em]">{m.value}</dd>
+                    <dd className="text-[11.5px] text-muted">{m.sub}</dd>
                   </div>
                 ))}
               </dl>
@@ -323,13 +393,15 @@ export default function Dashboard() {
 
             {/* Toolbar */}
             <div className="mt-8 flex flex-wrap items-center gap-2">
-              <div className="scrollbar-none flex items-center gap-0.5 overflow-x-auto rounded-lg bg-subtle p-0.5">
+              <div role="group" aria-label="Filter by tier" className="scrollbar-none flex items-center gap-0.5 overflow-x-auto rounded-lg bg-subtle p-0.5">
                 {([null, "A", "B", "C", "D"] as const).map((t) => (
                   <button
                     key={t ?? "all"}
                     onClick={() => setTier(t)}
+                    aria-pressed={tier === t}
+                    title={t ? `Tier ${t} · ${TIER_LABEL[t]}: ${TIER_RANGE[t]}` : "All imported leads, including in-progress and failed"}
                     className={cx(
-                      "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-all",
+                      "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] transition-all focus-visible:outline-2 focus-visible:outline-ink",
                       tier === t ? "bg-surface font-medium text-ink shadow-soft" : "text-muted hover:text-ink",
                     )}
                   >
@@ -338,12 +410,12 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              <Toggle on={needEmail} onClick={() => setNeedEmail((v) => !v)}><Mail size={13} strokeWidth={1.75} /> Email</Toggle>
-              <Toggle on={needPhone} onClick={() => setNeedPhone((v) => !v)}><Phone size={13} strokeWidth={1.75} /> Phone</Toggle>
+              <Toggle on={needEmail} onClick={() => setNeedEmail((v) => !v)} title="Only leads with an email on a mail-ready (MX) domain"><Mail size={13} strokeWidth={1.75} /> Email</Toggle>
+              <Toggle on={needPhone} onClick={() => setNeedPhone((v) => !v)} title="Only leads with a phone number"><Phone size={13} strokeWidth={1.75} /> Phone</Toggle>
               <Menu
                 align="left"
-                trigger={(_, toggle) => (
-                  <Toggle on={activeFilters > 0} onClick={toggle}>
+                trigger={(open, toggle) => (
+                  <Toggle on={activeFilters > 0} onClick={toggle} expanded={open}>
                     <ListFilter size={13} strokeWidth={1.75} /> Filters{activeFilters > 0 && ` · ${activeFilters}`}
                   </Toggle>
                 )}
@@ -361,7 +433,8 @@ export default function Dashboard() {
                         <button
                           key={ind ?? "all"}
                           onClick={() => setIndustry(ind)}
-                          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-hover"
+                          aria-pressed={industry === ind}
+                          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-hover focus-visible:outline-2 focus-visible:outline-ink"
                         >
                           <span className="flex items-center gap-2">
                             <Check size={13} className={industry === ind ? "opacity-100" : "opacity-0"} />
@@ -380,14 +453,28 @@ export default function Dashboard() {
                 )}
               </Menu>
 
+              {anyFilter && (
+                <Button variant="ghost" size="sm" onClick={resetView} title="Clear tier, filters and search">
+                  <RotateCcw size={13} /> Reset view
+                </Button>
+              )}
+              {failed.length > 0 && pending === 0 && (
+                <Button variant="ghost" size="sm" onClick={() => failed.forEach((l) => patch(l.domain, { status: "queued", error: undefined }))} title="Queue every failed lead again">
+                  <RotateCw size={13} /> Retry {failed.length} failed
+                </Button>
+              )}
+
               <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
                 <label className="relative flex-1 sm:flex-none">
+                  <span className="sr-only">Search leads</span>
                   <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
                   <input
+                    type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search"
-                    className="h-8 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-7 text-[13px] outline-none transition focus:border-ink sm:w-52"
+                    onKeyDown={(e) => e.key === "Escape" && setSearch("")}
+                    placeholder="Search name, domain, industry, city"
+                    className="h-8 w-full rounded-lg border border-line-strong bg-surface pl-8 pr-7 text-[13px] outline-none transition placeholder:text-muted/80 focus:border-ink sm:w-60 [&::-webkit-search-cancel-button]:hidden"
                   />
                   {search && (
                     <button onClick={() => setSearch("")} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-ink">
@@ -396,8 +483,8 @@ export default function Dashboard() {
                   )}
                 </label>
                 <Menu
-                  trigger={(_, toggle) => (
-                    <Button size="sm" onClick={toggle} disabled={!exportable.length}>
+                  trigger={(open, toggle) => (
+                    <Button size="sm" onClick={toggle} disabled={!exportable.length} expanded={open} title={exportable.length ? "Export the leads in the current view" : "No scored leads in the current view"}>
                       <Download size={14} strokeWidth={1.75} /> Export
                     </Button>
                   )}
@@ -414,26 +501,38 @@ export default function Dashboard() {
             </div>
 
             {/* List */}
-            <div className="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-soft md:pt-3">
+            {/* No overflow-hidden here: score tooltips must be able to escape the card. */}
+            <div className="anim-rise mt-4 rounded-2xl border border-line bg-surface shadow-soft md:pt-3">
               {rows.length === 0 ? (
                 <div className="px-6 py-20 text-center">
-                  <p className="text-[14px] font-medium">No matches</p>
-                  <p className="mt-1 text-[13px] text-muted">Try a different tier or clear the filters.</p>
+                  <p className="text-[14px] font-medium">No leads match this view</p>
+                  <p className="mt-1 text-[13px] text-muted">
+                    {[tier && `tier ${tier}`, industry, minScore && `score ≥ ${minScore}`, needEmail && "has email", needPhone && "has phone", search.trim() && `“${search.trim()}”`].filter(Boolean).join(" · ")}
+                  </p>
+                  <Button size="sm" className="mt-4" onClick={resetView}><RotateCcw size={13} /> Clear filters</Button>
                 </div>
               ) : (
                 <LeadTable rows={rows} sort={sort} onSort={onSort} onSelect={setSelected} selected={selected} onRetry={(d) => enrichOne(d)} />
               )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between text-[12px] text-muted">
-              <span>
-                Score = reachability 35 + acquisition fit 40 + buy-box 15 + data confidence 10
-              </span>
+            <div className="mt-4 flex flex-wrap items-start justify-between gap-x-6 gap-y-2 text-[12px] leading-5 text-muted">
+              <p>
+                Score = reachability {SCORING.reach.max} + acquisition fit {SCORING.fit.max} + buy-box {SCORING.icp.max} + data confidence {SCORING.confidence.max}.
+                {" "}Tiers: A {T.A}+ · B {T.B}–{T.A - 1} · C {T.C}–{T.B - 1} · D &lt;{T.C}. Heuristic fit, not a prediction of a sale.
+              </p>
               <button
-                className="inline-flex items-center gap-1 transition-colors hover:text-danger"
-                onClick={() => { if (confirm("Remove all leads from this browser?")) { setLeads([]); setSelected(null); } }}
+                className="inline-flex shrink-0 items-center gap-1 rounded transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-ink"
+                onClick={() => {
+                  if (confirm(`Remove all ${leads.length} leads from this browser? Your buy-box settings are kept.`)) {
+                    setLeads([]);
+                    setSelected(null);
+                    resetView();
+                    notify("List cleared");
+                  }
+                }}
               >
-                <Trash2 size={12} /> Clear
+                <Trash2 size={12} /> Clear list
               </button>
             </div>
           </div>

@@ -231,7 +231,10 @@ export function nextActions(d: Enrichment, score: LeadScore, nowYear = new Date(
   else if (d.evidence.foundedYear?.method === "inferred") out.push({ title: "Confirm founding year", why: "Estimated from wording, not stated explicitly." });
   if (!ownership) out.push({ title: "Verify ownership structure", why: "No family-owned or owner-operated statement was found." });
   else if (age !== null && age >= SCORING.fit.longTenureYears) {
-    out.push({ title: "Explore succession plans", why: `${age} years under ${d.signals.familyOwned ? "family" : "owner"} ownership; the owner's plans are unknown.` });
+    out.push({
+      title: "Ask about long-term plans",
+      why: `${age} years under ${d.signals.familyOwned ? "family" : "owner"} ownership. There is no public evidence of succession or sale plans; ask before assuming either.`,
+    });
   }
   const fit = score.components.find((c) => c.key === "fit");
   if (fit?.reasons.some((r) => r.startsWith("Possible improvement levers"))) {

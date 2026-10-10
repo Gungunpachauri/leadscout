@@ -30,15 +30,21 @@ type BtnProps = {
   className?: string;
   title?: string;
   type?: "button" | "submit";
+  /** Accessible name when the visible label is an icon only. */
+  label?: string;
+  expanded?: boolean;
 };
 
-export function Button({ children, onClick, variant = "outline", size = "md", disabled, className, title, type = "button" }: BtnProps) {
+export function Button({ children, onClick, variant = "outline", size = "md", disabled, className, title, type = "button", label, expanded }: BtnProps) {
   return (
     <button
       type={type}
       title={title}
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
+      aria-expanded={expanded}
+      aria-haspopup={expanded === undefined ? undefined : true}
       className={cx(
         "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:pointer-events-none disabled:opacity-40",
@@ -110,12 +116,18 @@ export function TierDot({ tier }: { tier: LeadScore["tier"] }) {
   return <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TIER_COLOR[tier] }} />;
 }
 
-export function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+export function Toggle({ on, onClick, children, expanded, title }: { on: boolean; onClick: () => void; children: ReactNode; expanded?: boolean; title?: string }) {
   return (
     <button
+      type="button"
       onClick={onClick}
+      title={title}
+      aria-pressed={expanded === undefined ? on : undefined}
+      aria-expanded={expanded}
+      aria-haspopup={expanded === undefined ? undefined : true}
       className={cx(
         "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
         on ? "border-ink bg-ink text-bg" : "border-line-strong text-ink-2 hover:bg-hover",
       )}
     >
@@ -161,45 +173,110 @@ export function MenuItem({ children, onClick, hint, disabled }: { children: Reac
   );
 }
 
-export function Sheet({ open, onClose, children, width = 520, label }: { open: boolean; onClose: () => void; children: ReactNode; width?: number; label: string }) {
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Dialog focus management: move focus inside on open, keep Tab cycling within,
+ * close on Escape, and return focus to whatever opened it.
+ */
+function useDialog(open: boolean, onClose: () => void, lockScroll: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const first = node?.querySelector<HTMLElement>("[data-autofocus]") ?? node?.querySelector<HTMLElement>(FOCUSABLE);
+    first?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); return; }
+      if (e.key !== "Tab" || !node) return;
+      const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const [a, z] = [items[0], items[items.length - 1]];
+      if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+    };
+    document.addEventListener("keydown", onKey, true);
     const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, [open, onClose]);
+    if (lockScroll) document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = prev;
+      opener?.focus?.({ preventScroll: true });
+    };
+  }, [open, lockScroll]);
+  return ref;
+}
+
+export function Sheet({ open, onClose, children, width = 520, label }: { open: boolean; onClose: () => void; children: ReactNode; width?: number; label: string }) {
+  const ref = useDialog(open, onClose, true);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40">
-      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} />
-      <aside
+      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} aria-hidden />
+      <div
+        ref={ref}
         role="dialog"
+        aria-modal="true"
         aria-label={label}
         className="anim-slide absolute inset-y-0 right-0 flex w-full flex-col border-l border-line bg-surface shadow-float"
         style={{ maxWidth: width }}
       >
         {children}
-      </aside>
+      </div>
     </div>
   );
 }
 
 export function Modal({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: ReactNode; label: string }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const ref = useDialog(open, onClose, false);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center px-4 pt-[12vh]">
-      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} />
-      <div role="dialog" aria-label={label} className="anim-rise relative w-full max-w-xl">
+      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} aria-hidden />
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="anim-rise relative w-full max-w-xl">
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * Hover/focus tooltip in pure CSS. The trigger should be focusable (button,
+ * link or tabIndex=0) so keyboard users get the same information.
+ */
+export function Tip({
+  content, children, side = "top", align = "center", className, wide, parentFocus,
+}: {
+  content: ReactNode;
+  children: ReactNode;
+  side?: "top" | "bottom";
+  align?: "left" | "center" | "right";
+  className?: string;
+  wide?: boolean;
+  /** Also show when the nearest `group` ancestor (e.g. a table row) has keyboard focus. */
+  parentFocus?: boolean;
+}) {
+  return (
+    <span className={cx("group/tip relative inline-flex", className)}>
+      {children}
+      <span
+        role="tooltip"
+        className={cx(
+          "pointer-events-none invisible absolute z-30 rounded-lg bg-ink px-2.5 py-1.5 text-left text-[12px] font-normal leading-[18px] text-bg opacity-0 shadow-float transition-opacity duration-150",
+          "group-hover/tip:visible group-hover/tip:opacity-100 group-focus-within/tip:visible group-focus-within/tip:opacity-100",
+          parentFocus && "group-focus-visible:visible group-focus-visible:opacity-100",
+          wide ? "w-64" : "w-max max-w-60",
+          side === "top" ? "bottom-full mb-2" : "top-full mt-2",
+          align === "center" && "left-1/2 -translate-x-1/2",
+          align === "right" && "right-0",
+          align === "left" && "left-0",
+        )}
+      >
+        {content}
+      </span>
+    </span>
   );
 }
