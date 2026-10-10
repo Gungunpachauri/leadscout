@@ -1,7 +1,7 @@
 // Shared types between the enrichment API and the dashboard.
 
 /** Bump when the Enrichment shape changes so stale caches are re-crawled. */
-export const ENRICHMENT_VERSION = 3;
+export const ENRICHMENT_VERSION = 4;
 
 /**
  * How a fact was established:

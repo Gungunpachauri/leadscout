@@ -69,24 +69,52 @@ Rules:
 - Ground every claim in the supplied data. Treat "inferred" or low-confidence facts as uncertain and say so.
 - Clearly separate evidence from hypotheses. Never present a hypothesis as fact.
 - If something is not in the data, write "Unknown". Never invent owner names, personal circumstances, revenue, headcount, financials or any intent to sell.
+- Website signals listed under "notDetected" were simply not found on the few crawled pages. Never state or imply the business lacks them (e.g. do not say "no e-commerce" or "not owner-operated"); treat them as unknown and, if relevant, turn them into a diligence question.
+- Only propose improvement opportunities that are supported by a detected signal or technology, and phrase them as possibilities to verify.
 - A high score is not evidence the company is for sale.
 - The outreach email expresses genuine interest in the business, asks for a short conversation, and never mentions scraping, scores or succession assumptions.`;
 
-function buildPayload(data: Enrichment, score: LeadScore, icp: IcpSettings, sender: { name?: string; firm?: string }) {
+const SIGNAL_LABELS: Record<keyof Enrichment["signals"], string> = {
+  familyOwned: "family-owned wording",
+  ownerOperated: "owner-operated wording or an owner/founder title",
+  hiring: "careers/jobs link",
+  ecommerce: "online store (cart, checkout or commerce platform)",
+  onlineBooking: "online booking",
+};
+
+/**
+ * What the model sees. Website signals are split into detected / not detected
+ * rather than true/false: a crawler not finding something on a few pages is
+ * not evidence the business lacks it.
+ */
+export function buildPayload(data: Enrichment, score: LeadScore, icp: IcpSettings, sender: { name?: string; firm?: string }) {
+  const keys = Object.keys(SIGNAL_LABELS) as (keyof Enrichment["signals"])[];
   return {
     company: {
-      name: data.name, domain: data.domain, description: data.description, industry: data.industry,
-      location: data.location, foundedYear: data.foundedYear, websiteCopyrightYear: data.copyrightYear,
-      decisionMakers: data.people.map((p) => ({ name: p.name, title: p.title, method: p.evidence.method })),
-      signals: data.signals, tech: data.tech,
-      contact: { mailReadyEmail: data.emails.some((e) => e.status === "mx-ok"), phone: data.phones.length > 0 },
+      name: data.name, domain: data.domain, description: data.description || "Unknown",
+      industry: data.industry ?? "Unknown", location: data.location ?? "Unknown",
+      foundedYear: data.foundedYear ?? "Unknown", websiteCopyrightYear: data.copyrightYear ?? "Unknown",
+      decisionMakers: data.people.length ? data.people.map((p) => ({ name: p.name, title: p.title, method: p.evidence.method })) : "Unknown",
+      websiteSignals: {
+        detected: keys.filter((k) => data.signals[k]).map((k) => SIGNAL_LABELS[k]),
+        notDetected: keys.filter((k) => !data.signals[k]).map((k) => SIGNAL_LABELS[k]),
+        note: `Based on ${data.pagesCrawled.length} crawled page(s)${data.thinContent ? " with little server-rendered text (likely a JavaScript site)" : ""}. "notDetected" means the crawler did not see it; it does NOT mean the business lacks it.`,
+      },
+      technologiesDetected: data.tech,
+      contact: { mailReadyEmailFound: data.emails.some((e) => e.status === "mx-ok"), phoneFound: data.phones.length > 0 },
       evidence: data.evidence,
     },
     score: {
       total: score.total, tier: score.tier,
       components: score.components.map((c) => ({ label: c.label, points: `${c.points}/${c.max}`, reasons: c.reasons, caveats: c.caveats })),
     },
-    buyerThesis: { targetIndustries: icp.industries, keywords: icp.keywords, minYearsInBusiness: icp.minYears, preferences: icp.prefer },
+    buyerThesis: {
+      targetIndustries: icp.industries.length ? icp.industries : "Any",
+      keywords: icp.keywords.length ? icp.keywords : "None",
+      minYearsInBusiness: icp.minYears,
+      // Only the buyer's switched-on preferences; "false" here could be misread as a company fact.
+      preferredCharacteristics: (Object.keys(icp.prefer ?? {}) as (keyof IcpSettings["prefer"])[]).filter((k) => icp.prefer[k]),
+    },
     sender: { name: sender.name || "[Your Name]", firm: sender.firm || "[Your Firm]" },
   };
 }

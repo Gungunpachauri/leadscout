@@ -81,6 +81,10 @@ const TECH_SIGNATURES: [string, RegExp][] = [
   ["Drift", /js\.driftt\.com/i],
   ["Calendly", /calendly\.com/i],
   ["Stripe", /js\.stripe\.com/i],
+  ["BigCommerce", /cdn\d*\.bigcommerce\.com|bigcommerce\.com\/s-/i],
+  ["Magento", /mage\/cookies|Magento_|requirejs-config\.js/i],
+  ["Salesforce Commerce Cloud", /demandware\.(static|store|net)|\/on\/demandware\./i],
+  ["WooCommerce", /woocommerce/i],
   ["jQuery", /jquery(\.min)?\.js/i],
 ];
 
@@ -405,12 +409,30 @@ export function analyzePages(domain: string, pages: PageFacts[], nowYear = new D
       familyOwned: Boolean(family),
       ownerOperated: Boolean(owner),
       hiring: pages.some((p) => p.links.some((l) => /careers|jobs|join-our-team|we're hiring|now hiring/i.test(l.href + " " + l.text))),
-      ecommerce: /add to cart|shopping cart|checkout/i.test(allText) || /cdn\.shopify\.com/i.test(allHtml),
+      ecommerce: detectEcommerce(pages, allText, allHtml),
       onlineBooking: /book (an |your )?(appointment|online|now)|schedule (service|online|an appointment)|calendly\.com/i.test(allText + allHtml),
     },
     evidence,
     thinContent: allText.length < 400,
   };
+}
+
+const COMMERCE_PLATFORMS = /cdn\.shopify\.com|myshopify\.com|cdn\d*\.bigcommerce\.com|demandware\.(static|store|net)|\/on\/demandware\.|woocommerce|mage\/cookies|Magento_|squarespace-commerce|ecwid\.com|snipcart/i;
+const CART_PATH = /\/(cart|basket|bag|checkout|shopping-?cart)(\/|\?|#|$)/i;
+const CART_TEXT = /\b(add to (cart|bag|basket)|shopping (cart|bag)|view (cart|bag)|checkout|free shipping on orders)\b/i;
+
+/**
+ * Online store detection. Large retailers often render the cart with
+ * JavaScript, so page wording alone misses them; cart/checkout links and
+ * commerce-platform fingerprints in the HTML are checked too.
+ */
+export function detectEcommerce(pages: PageFacts[], allText: string, allHtml: string): boolean {
+  if (CART_TEXT.test(allText) || COMMERCE_PLATFORMS.test(allHtml)) return true;
+  return pages.some((p) =>
+    p.links.some((l) => {
+      try { return CART_PATH.test(new URL(l.href, p.url).pathname); } catch { return false; }
+    }),
+  );
 }
 
 // ---------- orchestration ----------

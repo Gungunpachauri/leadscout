@@ -136,7 +136,7 @@ export function scoreLead(d: Enrichment, icpIn: IcpSettings, nowYear = new Date(
     if (d.copyrightYear && d.copyrightYear <= nowYear - D.staleAfterYears) { pts += D.staleSite; obs.push(`footer © ${d.copyrightYear}`); }
     if (!d.tech.some((t) => MARTECH.includes(t))) { pts += D.noMarketingAutomation; obs.push("no marketing automation detected"); }
     const diy = d.tech.find((t) => DIY_BUILDERS.includes(t));
-    if (diy || !d.signals.onlineBooking) { pts += D.diyOrNoBooking; obs.push(diy ? `built on ${diy}` : "no online booking"); }
+    if (diy || !d.signals.onlineBooking) { pts += D.diyOrNoBooking; obs.push(diy ? `built on ${diy}` : "no online booking detected"); }
     if (pts) {
       fit.points += pts;
       fit.reasons.push(`Possible improvement levers observed: ${obs.join(", ")}`);
