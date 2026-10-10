@@ -4,7 +4,7 @@
 // we fall back to an in-memory cache so the app keeps working.
 
 import { createClient, type Client } from "@libsql/client";
-import type { Enrichment } from "./types";
+import { ENRICHMENT_VERSION, type Enrichment } from "./types";
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -39,7 +39,9 @@ function init(): Promise<boolean> {
 }
 
 export async function getCached(domain: string): Promise<Enrichment | null> {
-  const fresh = (e: Enrichment | undefined | null) => (e && Date.now() - e.scrapedAt < TTL_MS ? e : null);
+  // Entries from an older schema are treated as misses and re-crawled.
+  const fresh = (e: Enrichment | undefined | null) =>
+    e && e.version === ENRICHMENT_VERSION && Date.now() - e.scrapedAt < TTL_MS ? e : null;
   if (await init()) {
     try {
       const r = await client!.execute({ sql: "SELECT data FROM enrichments WHERE domain = ?", args: [domain] });

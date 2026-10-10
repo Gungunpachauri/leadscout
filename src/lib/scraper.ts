@@ -1,73 +1,15 @@
 import * as cheerio from "cheerio";
-import type { Enrichment, PersonContact, Socials } from "./types";
-import { isPublicHost, normalizePhones, validateEmails } from "./validate";
+import { safeFetch } from "./http";
+import { ENRICHMENT_VERSION, type Enrichment, type Evidence, type FactKey, type PersonContact, type Socials } from "./types";
+import { normalizePhones, validateEmails } from "./validate";
 
-const USER_AGENT = "LeadScoutBot/1.0 (+https://github.com/Gungunpachauri/leadscout; polite B2B research crawler)";
-const PAGE_TIMEOUT_MS = 8000;
-const MAX_BYTES = 1_500_000;
 const MAX_PAGES = 4;
-const MAX_REDIRECTS = 4;
-
-// ---------- fetching ----------
-
-async function safeFetch(url: string): Promise<{ url: string; body: string; contentType: string } | null> {
-  let current = url;
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const u = new URL(current);
-    if (!["http:", "https:"].includes(u.protocol)) return null;
-    if (!(await isPublicHost(u.hostname))) return null;
-
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PAGE_TIMEOUT_MS);
-    try {
-      // Follow redirects by hand so every hop goes through the SSRF check.
-      const res = await fetch(current, {
-        redirect: "manual",
-        signal: ctrl.signal,
-        headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml,text/plain;q=0.8" },
-      });
-      if (res.status >= 300 && res.status < 400) {
-        const loc = res.headers.get("location");
-        if (!loc) return null;
-        current = new URL(loc, current).toString();
-        continue;
-      }
-      if (!res.ok) return null;
-      const contentType = res.headers.get("content-type") ?? "";
-      const buf = await readCapped(res);
-      return { url: current, body: buf, contentType };
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  return null;
-}
-
-async function readCapped(res: Response): Promise<string> {
-  if (!res.body) return "";
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    chunks.push(value);
-    if (total > MAX_BYTES) {
-      await reader.cancel();
-      break;
-    }
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks));
-}
 
 // ---------- robots.txt ----------
 
-type RobotsRules = { allow: string[]; disallow: string[] };
+export type RobotsRules = { allow: string[]; disallow: string[] };
 
-function parseRobots(txt: string): RobotsRules {
+export function parseRobots(txt: string): RobotsRules {
   // Only the "*" group applies to us; we don't claim a named agent.
   const rules: RobotsRules = { allow: [], disallow: [] };
   let inStar = false;
@@ -89,7 +31,7 @@ function parseRobots(txt: string): RobotsRules {
   return rules;
 }
 
-function robotsAllows(rules: RobotsRules, path: string): boolean {
+export function robotsAllows(rules: RobotsRules, path: string): boolean {
   // Longest matching rule wins, per RFC 9309.
   const match = (p: string) => {
     const re = new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\\\$$/, "$"));
@@ -104,9 +46,12 @@ function robotsAllows(rules: RobotsRules, path: string): boolean {
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
 const PHONE_RE = /(?:\+?1[\s.-]?)?\(?\b[2-9]\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
-const FOUNDED_RE = /\b(?:since|established|est\.?|founded(?:\s+in)?|serving[^.]{0,40}since|in business since)\s*(?:in\s*)?((?:18|19|20)\d{2})\b/i;
-const YEARS_RE = /\b(?:over|more than|nearly|for)\s+(\d{2,3})\s+years\b/i;
-const FAMILY_RE = /\b(family[- ]owned|family[- ]run|family business|(?:second|third|fourth|2nd|3rd|4th)[- ]generation|generations of)\b/i;
+const FOUNDED_RE = /\b(?:since|established|est\.?|founded(?:\s+in)?|serving[^.]{0,40}since|in business since)\s*(?:in\s*)?((?:18|19|20)\d{2})\b/gi;
+// "for 25 years" usually describes a person's tenure, so only lower-bound phrasing counts.
+const YEARS_RE = /\b(?:over|more than|nearly|almost)\s+(\d{2,3})\s+years\b/i;
+// "Nth generation" alone often comes from customer reviews ("the 4th generation visited"),
+// so it only counts when tied to the business itself.
+const FAMILY_RE = /\b(family[- ]owned|family[- ]run|family business|owned by the [A-Z][a-z]+ family|(?:second|third|fourth|fifth|2nd|3rd|4th|5th)[- ]generation[- ](?:family|owned|business|company|owners?|operated))\b/i;
 const OWNER_RE = /\b(owner[- ]operated|locally owned|independently owned|veteran[- ]owned|woman[- ]owned|women[- ]owned|owned and operated)\b/i;
 // Title words match in lower or Title case, but names must stay case-sensitive,
 // so we can't use the regex "i" flag.
@@ -118,6 +63,7 @@ const NAME = "[A-Z][a-z]+(?:\\s[A-Z]\\.)?\\s[A-Z][a-z][a-zA-Z'’-]*";
 const PERSON_AFTER = new RegExp(`\\b(${TITLE_WORDS})\\b[\\s,:\\-–—]+(?:and\\s+\\w+\\s+)?(${NAME})\\b`, "g");
 const PERSON_BEFORE = new RegExp(`\\b(${NAME})\\s*[,\\-–—|]\\s*(?:the\\s+|our\\s+)?(${TITLE_WORDS})\\b`, "g");
 const NOT_NAMES = /^(Our|The|About|Contact|Meet|Read|Learn|Call|Email|Home|View|More|Your|Free|Get|Privacy|Terms|Copyright|All|New|Best|Top|Why|How)\b/;
+const NOT_SURNAMES = /\b(Farmer|Owner|Manager|Director|Partner|Team|Group|Family|Company|Services?|Store|Shop|Founder|President|Officer|Staff|Members?)$/;
 
 const TECH_SIGNATURES: [string, RegExp][] = [
   ["WordPress", /wp-content|wp-includes/i],
@@ -139,14 +85,14 @@ const TECH_SIGNATURES: [string, RegExp][] = [
 ];
 
 const INDUSTRY_KEYWORDS: [string, RegExp][] = [
-  ["Home Services", /\b(hvac|plumb(ing|er)|roof(ing|er)|landscap|electrician|pest control|remodel|handyman|cleaning services?|garage door|pool service)/gi],
-  ["Construction", /\b(construction|general contractor|excavat|concrete|framing|builders?)\b/gi],
-  ["Manufacturing", /\b(manufactur|machin(e|ing) shop|fabricat|cnc|injection mold|industrial|assembly)/gi],
-  ["Healthcare", /\b(dental|dentist|clinic|medical|chiropract|physical therapy|veterinar|orthodont|pharmacy|health ?care)/gi],
-  ["Professional Services", /\b(accounting|cpa|bookkeeping|tax preparation|law firm|attorney|consulting|engineering firm|architect)/gi],
-  ["IT Services", /\b(managed services|msp|it support|cybersecurity|network(ing)? services|it services|help ?desk)\b/gi],
+  ["Home Services", /\b(hvac|plumb(?:ing|er)|roof(?:ing|er)|landscap\w*|electrician|pest control|remodel\w*|handyman|cleaning services?|garage door|pool service)/gi],
+  ["Construction", /\b(construction|general contractor|excavat\w*|concrete|framing|builders?)\b/gi],
+  ["Manufacturing", /\b(manufactur\w*|machin(?:e|ing) shop|fabricat\w*|cnc|injection mold\w*|industrial|assembly)/gi],
+  ["Healthcare", /\b(dental|dentist|clinic|medical|chiropract\w*|physical therapy|veterinar\w*|orthodont\w*|pharmacy|health ?care)/gi],
+  ["Professional Services", /\b(accounting|cpa|bookkeeping|tax preparation|law firm|attorney|consulting|engineering firm|architect\w*)/gi],
+  ["IT Services", /\b(managed services|msp|it support|cybersecurity|network(?:ing)? services|it services|help ?desk)\b/gi],
   ["Software", /\b(saas|software|platform|api|app for|cloud-based)\b/gi],
-  ["Logistics", /\b(logistics|trucking|freight|warehous|distribution|courier|3pl)/gi],
+  ["Logistics", /\b(logistics|trucking|freight|warehous\w*|distribution|courier|3pl)/gi],
   ["Food & Beverage", /\b(restaurant|bakery|catering|brewery|coffee|cafe|deli|food|spices?|winery)\b/gi],
   ["Retail & E-commerce", /\b(shop now|add to cart|free shipping|online store|retail|boutique)\b/gi],
   ["Marketing Agency", /\b(marketing agency|digital agency|seo services|advertising agency|branding agency)\b/gi],
@@ -164,7 +110,7 @@ const SCHEMA_INDUSTRY: Record<string, string> = {
   SoftwareApplication: "Software", EducationalOrganization: "Education",
 };
 
-interface PageFacts {
+export interface PageFacts {
   url: string;
   text: string;
   html: string;
@@ -177,7 +123,14 @@ interface PageFacts {
   jsonLd: Record<string, unknown>[];
 }
 
-function parsePage(url: string, html: string): PageFacts {
+/** ~140-char excerpt around a match, for showing evidence in the UI. */
+function excerpt(text: string, index: number, length: number): string {
+  const start = Math.max(0, index - 60);
+  const end = Math.min(text.length, index + length + 60);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
+}
+
+export function parsePage(url: string, html: string): PageFacts {
   // Pad element boundaries so text from adjacent tags doesn't run together
   // ("hello@foo.com" + "What we do" must not become "hello@foo.comWhat").
   const $ = cheerio.load(html.replace(/<\/(p|div|li|h[1-6]|td|th|span|a|section|footer|header|address|strong|b|em|i|label|button)>|<br\s*\/?>/gi, "$& "));
@@ -203,11 +156,12 @@ function parsePage(url: string, html: string): PageFacts {
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href") ?? "";
     if (href.startsWith("mailto:")) emails.push(href.slice(7));
-    else if (href.startsWith("tel:")) phones.push(decodeURIComponent(href.slice(4)));
-    else links.push({ href, text: $(el).text().trim().slice(0, 80) });
+    else if (href.startsWith("tel:")) {
+      try { phones.push(decodeURIComponent(href.slice(4))); } catch { /* bad escape */ }
+    } else links.push({ href, text: $(el).text().trim().slice(0, 80) });
   });
 
-  $("script, style, noscript, svg, iframe").remove();
+  $("script, style, noscript, svg, iframe, template").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
   emails.push(...(text.match(EMAIL_RE) ?? []));
   // Footer/contact text is where phone numbers live; limit to avoid false hits in long prose.
@@ -226,6 +180,8 @@ function parsePage(url: string, html: string): PageFacts {
     jsonLd,
   };
 }
+
+type Found<T> = { value: T; evidence: Evidence } | null;
 
 function findSocials(pages: PageFacts[]): Socials {
   const s: Socials = {};
@@ -247,52 +203,80 @@ function findSocials(pages: PageFacts[]): Socials {
 
 function findPeople(pages: PageFacts[]): PersonContact[] {
   const out = new Map<string, PersonContact>();
-  const add = (name: string, title: string, source: string) => {
+  const add = (name: string, title: string, evidence: Evidence) => {
     name = name.trim();
-    if (NOT_NAMES.test(name) || name.length > 40) return;
-    // "Shannon Lourenzo, Farmer-Owner" must not yield a person called "Lourenzo Farmer".
-    if (/\b(Farmer|Owner|Manager|Director|Partner|Team|Group|Family|Company|Services?|Store|Shop|Founder|President|Officer|Staff|Members?)$/.test(name)) return;
-    if (!out.has(name)) out.set(name, { name, title: title.replace(/\b\w/g, (c) => c.toUpperCase()), source });
+    if (NOT_NAMES.test(name) || NOT_SURNAMES.test(name) || name.length > 40) return;
+    if (!out.has(name)) out.set(name, { name, title: title.replace(/\b\w/g, (c) => c.toUpperCase()), evidence });
   };
   for (const p of pages) {
     for (const ld of p.jsonLd) {
       for (const key of ["founder", "employee", "member"]) {
         const v = ld[key];
         for (const person of Array.isArray(v) ? v : v ? [v] : []) {
-          if (person && typeof person === "object" && typeof (person as Record<string, unknown>).name === "string") {
-            add((person as Record<string, string>).name, (person as Record<string, string>).jobTitle ?? (key === "founder" ? "Founder" : "Team"), p.url);
+          const o = person as Record<string, unknown> | null;
+          if (o && typeof o === "object" && typeof o.name === "string") {
+            const title = typeof o.jobTitle === "string" ? o.jobTitle : key === "founder" ? "Founder" : "Team";
+            add(o.name, title, { method: "structured", confidence: "high", source: p.url, snippet: `schema.org ${key}: ${o.name}` });
           }
         }
       }
     }
-    for (const m of p.text.matchAll(PERSON_AFTER)) add(m[2], m[1], p.url);
-    for (const m of p.text.matchAll(PERSON_BEFORE)) add(m[1], m[2], p.url);
+    for (const m of p.text.matchAll(PERSON_AFTER)) {
+      add(m[2], m[1], { method: "inferred", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) });
+    }
+    for (const m of p.text.matchAll(PERSON_BEFORE)) {
+      add(m[1], m[2], { method: "inferred", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) });
+    }
   }
-  return [...out.values()].slice(0, 5);
+  // Structured entries first; they are the most trustworthy.
+  return [...out.values()].sort((a, b) => (a.evidence.method === "structured" ? 0 : 1) - (b.evidence.method === "structured" ? 0 : 1)).slice(0, 5);
 }
 
-function guessIndustry(pages: PageFacts[]): string | null {
+function findIndustry(pages: PageFacts[]): Found<string> {
   for (const p of pages) for (const ld of p.jsonLd) {
     const types = ([] as unknown[]).concat(ld["@type"] ?? []);
-    for (const t of types) if (typeof t === "string" && SCHEMA_INDUSTRY[t]) return SCHEMA_INDUSTRY[t];
+    for (const t of types) {
+      if (typeof t === "string" && SCHEMA_INDUSTRY[t]) {
+        return { value: SCHEMA_INDUSTRY[t], evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org @type: ${t}` } };
+      }
+    }
   }
   // Title and meta description say what the business *is*; body copy is noisier.
   const head = pages.map((p) => `${p.title} ${p.description}`).join(" ");
   const body = pages.map((p) => p.text.slice(0, 20000)).join(" ");
-  let best: [string, number] | null = null;
+  let best: { industry: string; score: number; headHits: number; terms: Map<string, number> } | null = null;
   for (const [industry, re] of INDUSTRY_KEYWORDS) {
-    const hits = (head.match(re)?.length ?? 0) * 3 + (body.match(re)?.length ?? 0);
-    if (hits >= 2 && (!best || hits > best[1])) best = [industry, hits];
+    const headMatches = head.match(re) ?? [];
+    const bodyMatches = body.match(re) ?? [];
+    const score = headMatches.length * 3 + bodyMatches.length;
+    if (score >= 2 && (!best || score > best.score)) {
+      const terms = new Map<string, number>();
+      for (const t of [...headMatches, ...bodyMatches]) terms.set(t.toLowerCase(), (terms.get(t.toLowerCase()) ?? 0) + 1);
+      best = { industry, score, headHits: headMatches.length, terms };
+    }
   }
-  return best?.[0] ?? null;
+  if (!best) return null;
+  const top = [...best.terms].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, n]) => `"${t}" ×${n}`).join(", ");
+  return {
+    value: best.industry,
+    evidence: {
+      method: "inferred",
+      confidence: best.headHits > 0 && best.score >= 6 ? "medium" : "low",
+      source: pages[0].url,
+      snippet: `Keyword match: ${top}`,
+    },
+  };
 }
 
-function guessLocation(pages: PageFacts[]): string | null {
+function findLocation(pages: PageFacts[]): Found<string> {
   for (const p of pages) for (const ld of p.jsonLd) {
     const addr = (ld.address ?? (ld.location as Record<string, unknown> | undefined)?.address) as Record<string, string> | string | undefined;
-    if (typeof addr === "string") return addr.slice(0, 80);
-    if (addr && (addr.addressLocality || addr.addressRegion)) {
-      return [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter((x) => typeof x === "string").join(", ");
+    if (typeof addr === "string" && addr.trim()) {
+      return { value: addr.slice(0, 80), evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org address: ${addr.slice(0, 80)}` } };
+    }
+    if (addr && typeof addr === "object" && (addr.addressLocality || addr.addressRegion)) {
+      const value = [addr.addressLocality, addr.addressRegion, addr.addressCountry].filter((x) => typeof x === "string").join(", ");
+      return { value, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org address: ${value}` } };
     }
   }
   for (const p of pages) {
@@ -300,22 +284,133 @@ function guessLocation(pages: PageFacts[]): string | null {
     if (m) {
       // "123 Main Drive Wauwatosa, WI" captures the street suffix too; drop it.
       const city = m[1].replace(/^(?:(?:Drive|Dr\.?|Road|Rd\.?|Street|St\.?|Avenue|Ave\.?|Blvd\.?|Boulevard|Lane|Ln\.?|Way|Hwy|Highway|Suite|Ste\.?|Court|Ct\.?|Parkway|Pkwy\.?|Place|Pl\.?)\s+)+/, "");
-      if (city) return `${city}, ${m[2]}`;
+      if (city) {
+        return { value: `${city}, ${m[2]}`, evidence: { method: "stated", confidence: "medium", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+      }
     }
   }
   return null;
 }
 
-function cleanName(pages: PageFacts[], domain: string): string {
+function findFounded(pages: PageFacts[], nowYear: number): Found<number> {
   for (const p of pages) for (const ld of p.jsonLd) {
-    if (typeof ld.name === "string" && /Organization|Business|Corporation|Store|Restaurant|LocalBusiness/i.test(String(ld["@type"]))) return ld.name;
+    const fd = ld.foundingDate;
+    if (typeof fd === "string" || typeof fd === "number") {
+      const y = parseInt(String(fd).slice(0, 4), 10);
+      if (y > 1800 && y <= nowYear) {
+        return { value: y, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org foundingDate: ${fd}` } };
+      }
+    }
+  }
+  // Pages mention several "since YYYY" milestones; the oldest is usually the founding.
+  let oldest: Found<number> = null;
+  for (const p of pages) {
+    for (const m of p.text.matchAll(FOUNDED_RE)) {
+      const y = parseInt(m[1], 10);
+      if (y < 1800 || y > nowYear) continue;
+      if (!oldest || y < oldest.value) {
+        oldest = { value: y, evidence: { method: "stated", confidence: "high", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+      }
+    }
+  }
+  if (oldest) return oldest;
+  for (const p of pages) {
+    const m = p.text.match(YEARS_RE);
+    if (m && +m[1] < 200) {
+      // "Over 30 years" is a lower bound, not a founding date.
+      return { value: nowYear - parseInt(m[1], 10), evidence: { method: "inferred", confidence: "low", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+    }
+  }
+  return null;
+}
+
+function findPattern(pages: PageFacts[], re: RegExp): Found<true> {
+  for (const p of pages) {
+    const m = p.text.match(re);
+    if (m) return { value: true, evidence: { method: "stated", confidence: "high", source: p.url, snippet: excerpt(p.text, m.index ?? 0, m[0].length) } };
+  }
+  return null;
+}
+
+function findName(pages: PageFacts[], domain: string): { value: string; evidence: Evidence } {
+  for (const p of pages) for (const ld of p.jsonLd) {
+    const types = ([] as unknown[]).concat(ld["@type"] ?? []).map(String);
+    const isOrg = types.some((t) => /Organization|Business|Corporation|Store|Restaurant/i.test(t) || t in SCHEMA_INDUSTRY);
+    if (typeof ld.name === "string" && ld.name.trim() && isOrg) {
+      return { value: ld.name, evidence: { method: "structured", confidence: "high", source: p.url, snippet: `schema.org name: ${ld.name}` } };
+    }
   }
   const home = pages[0];
-  if (home?.siteName) return home.siteName;
-  const title = home?.title.split(/\s[|–—-]\s|:\s/)[0]?.trim();
-  if (title && title.length <= 60 && !/^(home\s?page|home|welcome|index|untitled)$/i.test(title)) return title;
+  if (home.siteName) return { value: home.siteName, evidence: { method: "stated", confidence: "high", source: home.url, snippet: `og:site_name: ${home.siteName}` } };
+  const title = home.title.split(/\s[|–—-]\s|:\s/)[0]?.trim();
+  if (title && title.length <= 60 && !/^(home\s?page|home|welcome|index|untitled)$/i.test(title)) {
+    return { value: title, evidence: { method: "inferred", confidence: "medium", source: home.url, snippet: `Page title: ${home.title.slice(0, 100)}` } };
+  }
   const base = domain.split(".")[0];
-  return base.charAt(0).toUpperCase() + base.slice(1);
+  return { value: base.charAt(0).toUpperCase() + base.slice(1), evidence: { method: "inferred", confidence: "low", source: home.url, snippet: `Derived from domain ${domain}` } };
+}
+
+/**
+ * Pure extraction over already-fetched pages. Everything except email MX
+ * checks happens here, so it can be unit-tested against fixture HTML.
+ */
+export function analyzePages(domain: string, pages: PageFacts[], nowYear = new Date().getFullYear()) {
+  const allText = pages.map((p) => p.text).join(" ");
+  const allHtml = pages.map((p) => p.html).join(" ");
+  const evidence: Partial<Record<FactKey, Evidence>> = {};
+
+  const name = findName(pages, domain);
+  evidence.name = name.evidence;
+
+  const descPage = pages.find((p) => p.description);
+  if (descPage) evidence.description = { method: "stated", confidence: "high", source: descPage.url, snippet: "Meta description" };
+
+  const industry = findIndustry(pages);
+  if (industry) evidence.industry = industry.evidence;
+  const location = findLocation(pages);
+  if (location) evidence.location = location.evidence;
+  const founded = findFounded(pages, nowYear);
+  if (founded) evidence.foundedYear = founded.evidence;
+
+  const people = findPeople(pages);
+  const family = findPattern(pages, FAMILY_RE);
+  if (family) evidence.familyOwned = family.evidence;
+  let owner = findPattern(pages, OWNER_RE);
+  if (!owner) {
+    const p = people.find((x) => /owner|founder/i.test(x.title));
+    if (p) owner = { value: true, evidence: { ...p.evidence, method: "inferred", confidence: "medium" } };
+  }
+  if (owner) evidence.ownerOperated = owner.evidence;
+
+  const copyrightYears = [...allText.matchAll(/(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})/gi)].map((m) => +m[1]).filter((y) => y <= nowYear);
+
+  const emailFinds = pages.flatMap((p) => p.emails.map((address) => ({ address, source: p.url })));
+  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.email === "string") emailFinds.push({ address: ld.email, source: p.url });
+  const phoneFinds = pages.flatMap((p) => p.phones.map((raw) => ({ raw, source: p.url })));
+  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.telephone === "string") phoneFinds.unshift({ raw: ld.telephone, source: p.url });
+
+  return {
+    name: name.value,
+    description: (descPage?.description ?? "").slice(0, 300),
+    industry: industry?.value ?? null,
+    location: location?.value ?? null,
+    foundedYear: founded?.value ?? null,
+    copyrightYear: copyrightYears.length ? Math.max(...copyrightYears) : null,
+    people,
+    phones: normalizePhones(phoneFinds),
+    emailFinds,
+    socials: findSocials(pages),
+    tech: TECH_SIGNATURES.filter(([, re]) => re.test(allHtml)).map(([n]) => n),
+    signals: {
+      familyOwned: Boolean(family),
+      ownerOperated: Boolean(owner),
+      hiring: pages.some((p) => p.links.some((l) => /careers|jobs|join-our-team|we're hiring|now hiring/i.test(l.href + " " + l.text))),
+      ecommerce: /add to cart|shopping cart|checkout/i.test(allText) || /cdn\.shopify\.com/i.test(allHtml),
+      onlineBooking: /book (an |your )?(appointment|online|now)|schedule (service|online|an appointment)|calendly\.com/i.test(allText + allHtml),
+    },
+    evidence,
+    thinContent: allText.length < 400,
+  };
 }
 
 // ---------- orchestration ----------
@@ -332,9 +427,9 @@ export async function enrichDomain(domain: string): Promise<Enrichment> {
 
   let home = blockedByRobots.length ? null : await safeFetch(base);
   if (!home && !blockedByRobots.length) home = await safeFetch(`https://www.${domain}`);
-  if (!home) {
-    throw new Error(blockedByRobots.length ? "Homepage disallowed by robots.txt" : "Site unreachable or not HTML");
-  }
+  if (!home) throw new Error(blockedByRobots.length ? "Homepage disallowed by robots.txt" : "Site unreachable");
+  if (!/html|text\/plain/i.test(home.contentType) && home.contentType) throw new Error("Homepage is not HTML");
+
   const homeUrl = new URL(home.url);
   const pages: PageFacts[] = [parsePage(home.url, home.body)];
 
@@ -360,60 +455,12 @@ export async function enrichDomain(domain: string): Promise<Enrichment> {
   const fetched = await Promise.all(allowed.map((u) => safeFetch(u)));
   for (const f of fetched) if (f && /html/i.test(f.contentType)) pages.push(parsePage(f.url, f.body));
 
-  const allText = pages.map((p) => p.text).join(" ");
-  const allHtml = pages.map((p) => p.html).join(" ");
-  const nowYear = new Date().getFullYear();
-
-  let foundedYear: number | null = null;
-  for (const p of pages) for (const ld of p.jsonLd) {
-    const fd = ld.foundingDate;
-    if (!foundedYear && (typeof fd === "string" || typeof fd === "number")) {
-      const y = parseInt(String(fd).slice(0, 4), 10);
-      if (y > 1800 && y <= nowYear) foundedYear = y;
-    }
-  }
-  if (!foundedYear) {
-    // Pages mention several "since YYYY" milestones; the oldest is usually the founding.
-    const years = [...allText.matchAll(new RegExp(FOUNDED_RE.source, "gi"))].map((m) => parseInt(m[1], 10)).filter((y) => y <= nowYear);
-    if (years.length) foundedYear = Math.min(...years);
-  }
-  if (!foundedYear) {
-    const m = allText.match(YEARS_RE);
-    if (m && +m[1] < 200) foundedYear = nowYear - parseInt(m[1], 10);
-  }
-  if (foundedYear && (foundedYear < 1800 || foundedYear > nowYear)) foundedYear = null;
-
-  const copyrightYears = [...allText.matchAll(/(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})/gi)].map((m) => +m[1]).filter((y) => y <= nowYear);
-  const copyrightYear = copyrightYears.length ? Math.max(...copyrightYears) : null;
-
-  const emailFinds = pages.flatMap((p) => p.emails.map((address) => ({ address, source: p.url })));
-  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.email === "string") emailFinds.push({ address: ld.email, source: p.url });
-  const phoneFinds = pages.flatMap((p) => p.phones.map((raw) => ({ raw, source: p.url })));
-  for (const p of pages) for (const ld of p.jsonLd) if (typeof ld.telephone === "string") phoneFinds.unshift({ raw: ld.telephone, source: p.url });
-
-  const people = findPeople(pages);
-  const description = pages[0].description || pages.find((p) => p.description)?.description || "";
-
+  const { emailFinds, ...facts } = analyzePages(domain, pages);
   return {
+    version: ENRICHMENT_VERSION,
     domain,
-    name: cleanName(pages, domain),
-    description: description.slice(0, 300),
-    industry: guessIndustry(pages),
-    location: guessLocation(pages),
-    foundedYear,
-    copyrightYear,
+    ...facts,
     emails: await validateEmails(emailFinds, domain),
-    phones: normalizePhones(phoneFinds),
-    people,
-    socials: findSocials(pages),
-    tech: TECH_SIGNATURES.filter(([, re]) => re.test(allHtml)).map(([name]) => name),
-    signals: {
-      familyOwned: FAMILY_RE.test(allText),
-      ownerOperated: OWNER_RE.test(allText) || people.some((p) => /owner|founder/i.test(p.title)),
-      hiring: pages.some((p) => p.links.some((l) => /careers|jobs|join-our-team|we're hiring|now hiring/i.test(l.href + " " + l.text))),
-      ecommerce: /add to cart|shopping cart|checkout/i.test(allText) || /cdn\.shopify\.com/i.test(allHtml),
-      onlineBooking: /book (an |your )?(appointment|online|now)|schedule (service|online|an appointment)|calendly\.com/i.test(allText + allHtml),
-    },
     pagesCrawled: pages.map((p) => p.url),
     blockedByRobots,
     scrapedAt: Date.now(),

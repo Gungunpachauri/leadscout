@@ -7,7 +7,7 @@ import { Monogram, ScoreRing, cx } from "./ui";
 export type SortKey = "score" | "name" | "age";
 export type Row = { lead: Lead; score: LeadScore | null };
 
-const GRID = "grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.1fr)_64px_minmax(0,1.5fr)_56px_20px] items-center gap-x-5";
+const GRID = "grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.1fr)_68px_minmax(0,1.5fr)_56px_20px] items-center gap-x-5";
 
 function signalLine(l: Lead, nowYear: number) {
   const d = l.data!;
@@ -15,7 +15,7 @@ function signalLine(l: Lead, nowYear: number) {
   const s: string[] = [];
   if (d.signals.familyOwned) s.push("Family-owned");
   else if (d.signals.ownerOperated) s.push("Owner-run");
-  if (age !== null && age >= 20 && (d.signals.familyOwned || d.signals.ownerOperated)) s.push("Succession");
+  if (age !== null && age >= 20 && (d.signals.familyOwned || d.signals.ownerOperated)) s.push("Long tenure");
   return s;
 }
 
@@ -52,7 +52,7 @@ export function LeadTable({
         {rows.map(({ lead: l, score }) => {
           const d = l.data;
           const name = d?.name ?? l.inputName ?? l.domain;
-          const email = d?.emails.find((e) => e.status === "deliverable-domain");
+          const email = d?.emails.find((e) => e.status === "mx-ok");
           const age = d?.foundedYear ? nowYear - d.foundedYear : null;
           const signals = d ? signalLine(l, nowYear) : [];
           const interactive = Boolean(d);
@@ -83,11 +83,20 @@ export function LeadTable({
               {/* Industry / Age / Contact: desktop only */}
               {d ? (
                 <>
-                  <div className="hidden truncate text-[13px] text-ink-2 md:block">{d.industry ?? <span className="text-muted">-</span>}</div>
-                  <div className="hidden font-mono text-[13px] tabular-nums text-ink-2 md:block">{age !== null ? `${age}y` : <span className="text-muted">-</span>}</div>
+                  <div className="hidden truncate text-[13px] text-ink-2 md:block">
+                    {d.industry ?? <span className="text-muted">Unknown</span>}
+                    {d.industry && d.evidence.industry?.confidence === "low" && <span className="text-muted" title="Inferred from a few keywords"> ?</span>}
+                  </div>
+                  <div className="hidden text-[13px] tabular-nums text-ink-2 md:block">
+                    {age !== null ? (
+                      <span className="font-mono" title={d.evidence.foundedYear?.method === "inferred" ? "Estimated" : `Since ${d.foundedYear}`}>
+                        {d.evidence.foundedYear?.method === "inferred" ? "~" : ""}{age}y
+                      </span>
+                    ) : <span className="text-muted">Unknown</span>}
+                  </div>
                   <div className="hidden min-w-0 items-center gap-2.5 text-[13px] md:flex">
                     {email ? (
-                      <span className="flex min-w-0 items-center gap-1.5 text-ink-2" title="Domain accepts mail (MX verified)">
+                      <span className="flex min-w-0 items-center gap-1.5 text-ink-2" title="Domain accepts mail (MX). Mailbox itself not verified.">
                         <Mail size={13} strokeWidth={1.75} className="shrink-0 text-tier-a" />
                         <span className="truncate">{email.address}</span>
                       </span>

@@ -1,6 +1,5 @@
 import { promises as dns } from "node:dns";
-import net from "node:net";
-import type { EmailContact, EmailStatus, PhoneContact } from "./types";
+import type { EmailContact, PhoneContact } from "./types";
 
 // Department inboxes, matched as substrings so "bizgifts@" and "customercare@" count too.
 const ROLE_KEYWORDS = [
@@ -11,10 +10,11 @@ const ROLE_KEYWORDS = [
   "reserv", "feedback", "privacy", "legal", "care", "present", "location", "visit",
   "tech", "dispatch", "quote", "estimat", "hiring", "partner", "invoice", "accessib",
 ];
-const isRoleLocal = (local: string) => {
+
+export function isRoleLocal(local: string): boolean {
   const l = local.toLowerCase().replace(/[^a-z]/g, "");
   return l.length <= 2 || ROLE_KEYWORDS.some((k) => l.includes(k));
-};
+}
 
 // Placeholder or vendor addresses that show up in page source but aren't leads.
 const JUNK_EMAIL_DOMAINS = [
@@ -25,6 +25,7 @@ const JUNK_EMAIL_DOMAINS = [
 
 const EMAIL_SYNTAX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}$/;
 
+/** Syntax + junk filtering only. Says nothing about deliverability. */
 export function isPlausibleEmail(address: string): boolean {
   const a = address.toLowerCase();
   if (!EMAIL_SYNTAX.test(a)) return false;
@@ -61,20 +62,17 @@ export async function validateEmails(
   const results = await Promise.all(
     [...unique].map(async ([address, source]): Promise<EmailContact> => {
       const [local, domain] = address.split("@");
-      const ok = await domainAcceptsMail(domain);
-      const status: EmailStatus = ok ? "deliverable-domain" : "no-mx";
       return {
         address,
-        status,
+        status: (await domainAcceptsMail(domain)) ? "mx-ok" : "no-mx",
         isRole: isRoleLocal(local),
         onDomain: domain === companyDomain || domain.endsWith("." + companyDomain),
         source,
       };
     }),
   );
-  // Best first: deliverable, on-domain, named person.
-  const rank = (e: EmailContact) =>
-    (e.status === "deliverable-domain" ? 4 : 0) + (e.onDomain ? 2 : 0) + (e.isRole ? 0 : 1);
+  // Best first: mail-ready domain, on-domain, named person.
+  const rank = (e: EmailContact) => (e.status === "mx-ok" ? 4 : 0) + (e.onDomain ? 2 : 0) + (e.isRole ? 0 : 1);
   return results.sort((a, b) => rank(b) - rank(a)).slice(0, 8);
 }
 
@@ -103,30 +101,4 @@ export function normalizePhones(found: { raw: string; source: string }[]): Phone
     }
   }
   return [...out.values()].slice(0, 5);
-}
-
-/** SSRF guard: refuse to fetch hosts that resolve to private or loopback ranges. */
-export async function isPublicHost(hostname: string): Promise<boolean> {
-  try {
-    const addrs = await dns.lookup(hostname, { all: true });
-    return addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
-  } catch {
-    return false;
-  }
-}
-
-function isPrivateIp(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split(".").map(Number);
-    return (
-      a === 10 || a === 127 || a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127)
-    );
-  }
-  const v6 = ip.toLowerCase();
-  if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice(7));
-  return v6 === "::1" || v6 === "::" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80");
 }

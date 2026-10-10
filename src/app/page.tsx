@@ -1,7 +1,6 @@
 "use client";
 
-import { Download, Mail, Phone, Plus, Search, ShieldCheck, SlidersHorizontal, Sparkles, Target, Trash2, X } from "lucide-react";
-import Papa from "papaparse";
+import { Check, Download, ListFilter, Mail, Phone, Plus, Search, ShieldCheck, SlidersHorizontal, Sparkles, Target, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BuyBoxSheet } from "@/components/BuyBoxSheet";
 import { Composer } from "@/components/Composer";
@@ -9,9 +8,9 @@ import { LeadDrawer } from "@/components/LeadDrawer";
 import { LeadTable, type Row, type SortKey } from "@/components/LeadTable";
 import { Button, Menu, MenuItem, Modal, TierDot, Toggle, cx } from "@/components/ui";
 import { exportCsv, exportHubspot } from "@/lib/export";
-import { dedupeInputs, guessColumns } from "@/lib/normalize";
+import { dedupeInputs, parseImport } from "@/lib/normalize";
 import { DEFAULT_ICP, scoreLead } from "@/lib/score";
-import type { IcpSettings, Lead, LeadScore } from "@/lib/types";
+import { ENRICHMENT_VERSION, type IcpSettings, type Lead, type LeadScore } from "@/lib/types";
 
 const CONCURRENCY = 4;
 const STORAGE_KEY = "leadscout:v1";
@@ -54,6 +53,8 @@ export default function Dashboard() {
   const [tier, setTier] = useState<LeadScore["tier"] | null>(null);
   const [needEmail, setNeedEmail] = useState(false);
   const [needPhone, setNeedPhone] = useState(false);
+  const [industry, setIndustry] = useState<string | null>(null);
+  const [minScore, setMinScore] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const activeWorkers = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -68,8 +69,13 @@ export default function Dashboard() {
   useEffect(() => {
     const saved = load();
     if (saved) {
-      setLeads(saved.leads.map((l) => (l.status === "running" ? { ...l, status: "queued" } : l)));
-      setIcp({ ...DEFAULT_ICP, ...saved.icp });
+      setLeads(saved.leads.map((l): Lead => {
+        if (l.status === "running") return { ...l, status: "queued" };
+        // Data saved by an older version lacks evidence; re-enrich it.
+        if (l.data && l.data.version !== ENRICHMENT_VERSION) return { domain: l.domain, inputName: l.inputName, status: "queued" };
+        return l;
+      }));
+      setIcp({ ...DEFAULT_ICP, ...saved.icp, prefer: { ...DEFAULT_ICP.prefer, ...saved.icp?.prefer } });
       setSender(saved.sender ?? {});
     }
     setHydrated(true);
@@ -140,16 +146,30 @@ export default function Dashboard() {
   }
 
   function importText(text: string) {
-    const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
-    const { domainCol, nameCol } = guessColumns(res.meta.fields ?? []);
-    if (!domainCol) {
-      addRows(text.split(/[\n,;]+/).map((value) => ({ value })));
+    const items = parseImport(text);
+    if (!items.length) {
+      notify("Nothing to import. Paste domains or upload a CSV with a website column.");
       return;
     }
-    addRows(res.data.map((r) => ({ value: r[domainCol] ?? "", name: nameCol ? r[nameCol] : undefined })));
+    addRows(items);
   }
 
-  const onFile = async (f: File) => importText(await f.text());
+  const onFile = async (f: File) => {
+    if (!/\.(csv|txt|tsv)$/i.test(f.name) && !/^text\//.test(f.type)) {
+      notify(`Unsupported file "${f.name}". Export it as .csv and try again.`);
+      return;
+    }
+    if (f.size > 5_000_000) {
+      notify("File is larger than 5 MB. Split it into smaller CSVs.");
+      return;
+    }
+    const text = await f.text();
+    if (!text.trim()) {
+      notify(`"${f.name}" is empty.`);
+      return;
+    }
+    importText(text);
+  };
   const loadSample = async () => importText(await fetch("/sample-leads.csv").then((r) => r.text()));
 
   const scores = useMemo(() => {
@@ -167,14 +187,16 @@ export default function Dashboard() {
   const rows: Row[] = useMemo(() => {
     const q = search.trim().toLowerCase();
     const nowYear = new Date().getFullYear();
-    const filtering = Boolean(tier || needEmail || needPhone);
+    const filtering = Boolean(tier || needEmail || needPhone || industry || minScore);
     const filtered = leads
       .map((lead) => ({ lead, score: scores.get(lead.domain) ?? null }))
       .filter(({ lead, score }) => {
         if (q && !`${lead.domain} ${lead.data?.name ?? ""} ${lead.inputName ?? ""} ${lead.data?.industry ?? ""} ${lead.data?.location ?? ""}`.toLowerCase().includes(q)) return false;
         if (!score) return !filtering;
         if (tier && score.tier !== tier) return false;
-        if (needEmail && !lead.data!.emails.some((e) => e.status === "deliverable-domain")) return false;
+        if (score.total < minScore) return false;
+        if (industry && (lead.data!.industry ?? "Unknown") !== industry) return false;
+        if (needEmail && !lead.data!.emails.some((e) => e.status === "mx-ok")) return false;
         if (needPhone && !lead.data!.phones.length) return false;
         return true;
       });
@@ -186,13 +208,21 @@ export default function Dashboard() {
       const va = val(a), vb = val(b);
       return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir;
     });
-  }, [leads, scores, search, tier, needEmail, needPhone, sort]);
+  }, [leads, scores, search, tier, needEmail, needPhone, industry, minScore, sort]);
+
+  // Industries actually present in the list, for the filter menu.
+  const industries = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of leads) if (l.data) m.set(l.data.industry ?? "Unknown", (m.get(l.data.industry ?? "Unknown") ?? 0) + 1);
+    return [...m].sort((a, b) => (a[0] === "Unknown" ? 1 : b[0] === "Unknown" ? -1 : b[1] - a[1]));
+  }, [leads]);
+  const activeFilters = (industry ? 1 : 0) + (minScore ? 1 : 0);
 
   const done = leads.filter((l) => l.status === "done");
   const pending = leads.filter((l) => l.status === "queued" || l.status === "running").length;
   const scoredList = [...scores.values()];
   const avg = scoredList.length ? Math.round(scoredList.reduce((s, x) => s + x.total, 0) / scoredList.length) : null;
-  const reachable = done.filter((l) => l.data!.emails.some((e) => e.status === "deliverable-domain") || l.data!.phones.length).length;
+  const reachable = done.filter((l) => l.data!.emails.some((e) => e.status === "mx-ok") || l.data!.phones.length).length;
   const exportable = rows.filter((r): r is { lead: Lead; score: LeadScore } => r.score !== null);
   const selectedLead = selected ? leads.find((l) => l.domain === selected) : undefined;
   const icpCount = icp.industries.length + icp.keywords.length;
@@ -310,6 +340,45 @@ export default function Dashboard() {
               </div>
               <Toggle on={needEmail} onClick={() => setNeedEmail((v) => !v)}><Mail size={13} strokeWidth={1.75} /> Email</Toggle>
               <Toggle on={needPhone} onClick={() => setNeedPhone((v) => !v)}><Phone size={13} strokeWidth={1.75} /> Phone</Toggle>
+              <Menu
+                align="left"
+                trigger={(_, toggle) => (
+                  <Toggle on={activeFilters > 0} onClick={toggle}>
+                    <ListFilter size={13} strokeWidth={1.75} /> Filters{activeFilters > 0 && ` · ${activeFilters}`}
+                  </Toggle>
+                )}
+              >
+                {() => (
+                  <div className="w-64 p-2">
+                    <div className="flex items-baseline justify-between px-0.5">
+                      <span className="text-[12px] font-medium text-muted">Minimum score</span>
+                      <span className="font-mono text-[12px] tabular-nums">{minScore}</span>
+                    </div>
+                    <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(+e.target.value)} className="mt-1.5 w-full" aria-label="Minimum score" />
+                    <div className="mt-3 px-0.5 text-[12px] font-medium text-muted">Industry</div>
+                    <div className="mt-1 max-h-56 overflow-y-auto">
+                      {[[null, leads.filter((l) => l.data).length] as const, ...industries].map(([ind, n]) => (
+                        <button
+                          key={ind ?? "all"}
+                          onClick={() => setIndustry(ind)}
+                          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-hover"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Check size={13} className={industry === ind ? "opacity-100" : "opacity-0"} />
+                            {ind ?? "All industries"}
+                          </span>
+                          <span className="tabular-nums text-muted">{n}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {activeFilters > 0 && (
+                      <button onClick={() => { setIndustry(null); setMinScore(0); }} className="mt-2 w-full rounded-md py-1.5 text-[12px] text-muted hover:bg-hover hover:text-ink">
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
+                )}
+              </Menu>
 
               <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
                 <label className="relative flex-1 sm:flex-none">

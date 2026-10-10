@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowUpRight, Check, Copy, Loader2, Mail, Phone, RotateCw, Sparkles, UserRound, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Check, Copy, Info, Loader2, Mail, Phone, RotateCw, Sparkles, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { templateEmail } from "@/lib/export";
-import type { IcpSettings, Lead, LeadScore } from "@/lib/types";
+import { nextActions } from "@/lib/score";
+import type { Evidence, IcpSettings, Lead, LeadScore } from "@/lib/types";
 import { Button, Monogram, ScoreRing, Sheet, TIER_COLOR, TIER_LABEL, cx } from "./ui";
 
 function useCopy() {
@@ -17,6 +18,45 @@ function useCopy() {
 
 function Label({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-3 text-[12px] font-medium text-muted">{children}</h3>;
+}
+
+const METHOD_LABEL: Record<Evidence["method"], string> = {
+  structured: "Structured data",
+  stated: "Stated on site",
+  inferred: "Inferred",
+};
+
+function EvidenceTag({ e }: { e: Evidence }) {
+  const color = e.confidence === "high" ? "var(--a)" : e.confidence === "medium" ? "var(--b)" : "var(--c)";
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px] text-muted" title={`${e.confidence} confidence`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {METHOD_LABEL[e.method]}
+    </span>
+  );
+}
+
+function Fact({ label, value, evidence }: { label: string; value: string | null; evidence?: Evidence }) {
+  const path = evidence ? evidence.source.replace(/^https?:\/\/[^/]+/, "") || "/" : "";
+  return (
+    <div className="grid grid-cols-[96px_1fr] gap-3 py-2.5">
+      <dt className="text-[13px] text-muted">{label}</dt>
+      <dd className="min-w-0">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className={cx("text-[13px]", value ? "text-ink" : "text-muted")}>{value ?? "Unknown"}</span>
+          {evidence && <EvidenceTag e={evidence} />}
+        </div>
+        {evidence && (
+          <p className="mt-1 line-clamp-2 text-[12px] leading-[18px] text-muted">
+            <span className="italic">{evidence.snippet}</span>{" "}
+            <a href={evidence.source} target="_blank" rel="noreferrer" className="whitespace-nowrap not-italic underline decoration-line-strong underline-offset-2 hover:text-ink">
+              {path.length > 28 ? path.slice(0, 28) + "…" : path}
+            </a>
+          </p>
+        )}
+      </dd>
+    </div>
+  );
 }
 
 type Tab = "overview" | "outreach" | "sources";
@@ -37,6 +77,8 @@ export function LeadDrawer({
   const [tab, setTab] = useState<Tab>("overview");
   const [brief, setBrief] = useState<{ loading: boolean; error?: string }>({ loading: false });
   const { copied, copy } = useCopy();
+  const actions = nextActions(d, score);
+  const ev = d.evidence;
 
   async function generate() {
     setBrief({ loading: true });
@@ -56,19 +98,17 @@ export function LeadDrawer({
   }
 
   const email = lead.ai?.email ?? templateEmail(lead, sender);
-  const to = d.emails.find((e) => e.status === "deliverable-domain")?.address ?? "";
+  const to = d.emails.find((e) => e.status === "mx-ok")?.address ?? "";
   const mailto = `mailto:${to}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
-  const meta = [d.industry, d.location, d.foundedYear && `Est. ${d.foundedYear}`].filter(Boolean);
+  const age = d.foundedYear ? new Date().getFullYear() - d.foundedYear : null;
   const signals = [
-    d.signals.familyOwned && "Family-owned",
-    d.signals.ownerOperated && "Owner-operated",
     d.signals.hiring && "Hiring",
     d.signals.ecommerce && "E-commerce",
     d.signals.onlineBooking && "Online booking",
   ].filter(Boolean) as string[];
 
   return (
-    <Sheet open onClose={onClose} label={`${d.name} details`} width={560}>
+    <Sheet open onClose={onClose} label={`${d.name} details`} width={580}>
       {/* Header */}
       <div className="px-7 pt-6">
         <div className="flex items-start justify-between gap-4">
@@ -85,10 +125,9 @@ export function LeadDrawer({
             <X size={18} />
           </button>
         </div>
-        {meta.length > 0 && <p className="mt-4 text-[13px] text-ink-2">{meta.join("  ·  ")}</p>}
-        {d.description && <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{d.description}</p>}
+        {d.description && <p className="mt-4 text-[13.5px] leading-relaxed text-muted">{d.description}</p>}
 
-        <nav className="mt-6 flex gap-5 border-b border-line text-[13px]">
+        <nav className="mt-5 flex gap-5 border-b border-line text-[13px]">
           {(["overview", "outreach", "sources"] as Tab[]).map((t) => (
             <button
               key={t}
@@ -104,34 +143,92 @@ export function LeadDrawer({
       <div className="flex-1 overflow-y-auto px-7 py-6">
         {tab === "overview" && (
           <div className="anim-fade space-y-8">
+            {d.thinContent && (
+              <div className="flex gap-2.5 rounded-xl border border-line bg-subtle/60 p-3.5 text-[12.5px] leading-5 text-ink-2">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0 text-tier-c" />
+                This site serves little text without JavaScript, so many facts may be missing rather than absent.
+              </div>
+            )}
+
             {/* Score */}
-            <section className="flex items-center gap-5">
-              <ScoreRing score={score} size={72} stroke={5} />
-              <div>
-                <div className="text-[15px] font-semibold" style={{ color: TIER_COLOR[score.tier] }}>
-                  {TIER_LABEL[score.tier]}
+            <section>
+              <div className="flex items-center gap-5">
+                <ScoreRing score={score} size={72} stroke={5} />
+                <div>
+                  <div className="text-[15px] font-semibold" style={{ color: TIER_COLOR[score.tier] }}>{TIER_LABEL[score.tier]}</div>
+                  <div className="text-[13px] text-muted">Tier {score.tier} · {score.total} of 100</div>
                 </div>
-                <div className="text-[13px] text-muted">Tier {score.tier} · {score.total} of 100</div>
+              </div>
+              <p className="mt-3 text-[12px] text-muted">Heuristic acquisition fit. Not a prediction that the company is for sale.</p>
+            </section>
+
+            {/* Next steps */}
+            {actions.length > 0 && (
+              <section>
+                <Label>Next steps</Label>
+                <ol className="space-y-2.5">
+                  {actions.map((a, i) => (
+                    <li key={a.title} className="flex gap-3 text-[13px]">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-subtle font-mono text-[11px] text-muted">{i + 1}</span>
+                      <div>
+                        <div className="font-medium">{a.title}</div>
+                        <div className="text-muted">{a.why}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+
+            {/* Evidence-backed facts */}
+            <section>
+              <Label>Key facts</Label>
+              <dl className="divide-y divide-line border-y border-line">
+                <Fact
+                  label="Founded"
+                  value={d.foundedYear ? `${ev.foundedYear?.method === "inferred" ? "~" : ""}${d.foundedYear}${age !== null ? ` · ${age} yrs` : ""}` : null}
+                  evidence={ev.foundedYear}
+                />
+                <Fact
+                  label="Ownership"
+                  value={d.signals.familyOwned ? "Family-owned" : d.signals.ownerOperated ? "Owner-operated" : null}
+                  evidence={ev.familyOwned ?? ev.ownerOperated}
+                />
+                <Fact label="Decision-maker" value={d.people[0] ? `${d.people[0].name} · ${d.people[0].title}` : null} evidence={d.people[0]?.evidence} />
+                <Fact label="Industry" value={d.industry} evidence={ev.industry} />
+                <Fact label="Location" value={d.location} evidence={ev.location} />
+              </dl>
+            </section>
+
+            {/* Score breakdown */}
+            <section>
+              <Label>Score breakdown</Label>
+              <div className="space-y-5">
+                {score.components.map((c) => (
+                  <div key={c.key}>
+                    <div className="flex items-baseline justify-between text-[13px]">
+                      <span className="font-medium">{c.label}</span>
+                      <span className="font-mono tabular-nums text-muted">{c.points}<span className="opacity-50">/{c.max}</span></span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle">
+                      <div className="h-full rounded-full bg-ink transition-all duration-500" style={{ width: `${(c.points / c.max) * 100}%` }} />
+                    </div>
+                    <ul className="mt-2 space-y-0.5 text-[12.5px] leading-5 text-ink-2">
+                      {c.reasons.map((r) => <li key={r}>{r}</li>)}
+                    </ul>
+                    {c.caveats.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 text-[12px] leading-5 text-muted">
+                        {c.caveats.map((r) => (
+                          <li key={r} className="flex gap-1.5"><Info size={12} className="mt-[4px] shrink-0" />{r}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
 
-            <section className="space-y-5">
-              {score.components.map((c) => (
-                <div key={c.key}>
-                  <div className="flex items-baseline justify-between text-[13px]">
-                    <span className="font-medium">{c.label}</span>
-                    <span className="font-mono tabular-nums text-muted">{c.points}<span className="opacity-50">/{c.max}</span></span>
-                  </div>
-                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle">
-                    <div className="h-full rounded-full bg-ink transition-all duration-500" style={{ width: `${(c.points / c.max) * 100}%` }} />
-                  </div>
-                  <ul className="mt-2 space-y-0.5 text-[12.5px] leading-5 text-muted">
-                    {c.reasons.map((r) => <li key={r}>{r}</li>)}
-                  </ul>
-                </div>
-              ))}
-            </section>
-
+            {/* Contacts */}
             <section>
               <Label>Contacts</Label>
               {d.emails.length + d.phones.length + d.people.length === 0 ? (
@@ -142,15 +239,18 @@ export function LeadDrawer({
                     <li key={p.name} className="flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
                       <UserRound size={15} strokeWidth={1.75} className="text-muted" />
                       <span className="font-medium">{p.name}</span>
-                      <span className="text-muted">{p.title}</span>
+                      <span className="flex-1 text-muted">{p.title}</span>
+                      <EvidenceTag e={p.evidence} />
                     </li>
                   ))}
                   {d.emails.map((e) => (
                     <li key={e.address} className="group flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
-                      <Mail size={15} strokeWidth={1.75} className={e.status === "deliverable-domain" ? "text-tier-a" : "text-danger"} />
+                      <Mail size={15} strokeWidth={1.75} className={e.status === "mx-ok" ? "text-tier-a" : "text-danger"} />
                       <span className="min-w-0 flex-1 truncate">{e.address}</span>
-                      <span className="text-[11.5px] text-muted">{e.status !== "deliverable-domain" ? "No MX" : e.isRole ? "Role inbox" : "Direct"}</span>
-                      <button onClick={() => copy(e.address, e.address)} aria-label="Copy email" className="rounded p-1 text-muted opacity-0 hover:bg-hover hover:text-ink group-hover:opacity-100">
+                      <span className="text-[11.5px] text-muted" title={e.status === "mx-ok" ? "Domain accepts mail. Mailbox not verified." : "Domain has no mail servers"}>
+                        {e.status !== "mx-ok" ? "No MX" : e.isRole ? "Role inbox" : "Direct"}
+                      </span>
+                      <button onClick={() => copy(e.address, e.address)} aria-label="Copy email" className="rounded p-1 text-muted opacity-0 hover:bg-hover hover:text-ink focus:opacity-100 group-hover:opacity-100">
                         {copied === e.address ? <Check size={13} /> : <Copy size={13} />}
                       </button>
                     </li>
@@ -159,12 +259,15 @@ export function LeadDrawer({
                     <li key={p.e164} className="group flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
                       <Phone size={15} strokeWidth={1.75} className="text-muted" />
                       <a href={`tel:${p.e164}`} className="flex-1 hover:underline">{p.display}</a>
-                      <button onClick={() => copy(p.e164, p.e164)} aria-label="Copy phone" className="rounded p-1 text-muted opacity-0 hover:bg-hover hover:text-ink group-hover:opacity-100">
+                      <button onClick={() => copy(p.e164, p.e164)} aria-label="Copy phone" className="rounded p-1 text-muted opacity-0 hover:bg-hover hover:text-ink focus:opacity-100 group-hover:opacity-100">
                         {copied === p.e164 ? <Check size={13} /> : <Copy size={13} />}
                       </button>
                     </li>
                   ))}
                 </ul>
+              )}
+              {d.emails.some((e) => e.status === "mx-ok") && (
+                <p className="mt-2 text-[12px] text-muted">Green = the email&apos;s domain accepts mail (MX). Individual mailboxes are not verified.</p>
               )}
               {Object.keys(d.socials).length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
@@ -178,9 +281,9 @@ export function LeadDrawer({
             </section>
 
             <section>
-              <Label>Signals</Label>
+              <Label>Website signals</Label>
               <p className="text-[13px] leading-6 text-ink-2">
-                {[...signals, ...d.tech, d.copyrightYear ? `Site © ${d.copyrightYear}` : null].filter(Boolean).join("  ·  ") || "No notable signals detected."}
+                {[...signals, ...d.tech, d.copyrightYear ? `Footer © ${d.copyrightYear}` : null].filter(Boolean).join("  ·  ") || "None detected."}
               </p>
             </section>
           </div>
@@ -189,28 +292,35 @@ export function LeadDrawer({
         {tab === "outreach" && (
           <div className="anim-fade space-y-8">
             {lead.ai ? (
-              <section className="space-y-5 text-[13.5px] leading-relaxed">
+              <section className="space-y-6 text-[13.5px] leading-relaxed">
                 <div className="flex items-center gap-2 text-[12px] text-muted">
-                  <Sparkles size={13} /> AI brief · fit {lead.ai.fitRating}/10
+                  <Sparkles size={13} /> AI brief · fit {lead.ai.fitRating}/10 · {lead.ai.model}
                 </div>
                 <p className="text-ink">{lead.ai.summary}</p>
                 <div>
                   <Label>Acquisition thesis</Label>
                   <p className="text-ink-2">{lead.ai.acquisitionThesis}</p>
                 </div>
-                {lead.ai.risks.length > 0 && (
-                  <div>
-                    <Label>Diligence questions</Label>
-                    <ul className="list-disc space-y-1 pl-4 text-ink-2 marker:text-muted">{lead.ai.risks.map((r) => <li key={r}>{r}</li>)}</ul>
-                  </div>
+                {[
+                  ["Improvement opportunities", lead.ai.improvementOpportunities],
+                  ["Diligence questions", lead.ai.diligenceQuestions],
+                  ["Uncertainties & risks", lead.ai.uncertainties],
+                ].map(([title, items]) =>
+                  (items as string[] | undefined)?.length ? (
+                    <div key={title as string}>
+                      <Label>{title as string}</Label>
+                      <ul className="list-disc space-y-1 pl-4 text-ink-2 marker:text-muted">{(items as string[]).map((r) => <li key={r}>{r}</li>)}</ul>
+                    </div>
+                  ) : null,
                 )}
+                <p className="text-[12px] text-muted">AI-generated from the facts above. Verify before acting.</p>
               </section>
             ) : (
               <section className="rounded-xl border border-dashed border-line-strong p-5 text-center">
                 <Sparkles size={18} className="mx-auto text-muted" />
                 <p className="mt-2 text-[13.5px] font-medium">Acquisition brief</p>
                 <p className="mx-auto mt-1 max-w-xs text-[13px] text-muted">
-                  Summary, thesis, diligence questions and a personalised owner email, written by Claude from this lead&apos;s data.
+                  Summary, thesis, improvement ideas, diligence questions and an owner email, grounded in this lead&apos;s evidence.
                 </p>
                 <Button variant="primary" size="sm" className="mt-4" onClick={generate} disabled={!aiEnabled || brief.loading}>
                   {brief.loading ? <><Loader2 size={14} className="animate-spin" /> Writing…</> : "Generate brief"}
@@ -256,6 +366,14 @@ export function LeadDrawer({
               {d.blockedByRobots.length > 0 && (
                 <p className="mt-3 text-[12.5px] text-muted">Skipped per robots.txt: {d.blockedByRobots.join(", ")}</p>
               )}
+            </section>
+            <section>
+              <Label>How facts are labelled</Label>
+              <ul className="space-y-1.5 text-[12.5px] text-ink-2">
+                <li><span className="font-medium">Structured data</span>: published by the site in schema.org markup.</li>
+                <li><span className="font-medium">Stated on site</span>: explicit wording, quoted as evidence.</li>
+                <li><span className="font-medium">Inferred</span>: heuristic, e.g. keyword counts or &quot;over 30 years&quot;.</li>
+              </ul>
             </section>
             <section>
               <Label>Freshness</Label>

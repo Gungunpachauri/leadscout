@@ -25,6 +25,14 @@ export function BuyBoxSheet({
         <div>
           <h2 className="text-[15px] font-semibold">Buy-box</h2>
           <p className="text-[13px] text-muted">Scores update instantly. Nothing is re-crawled.</p>
+          {(icp.industries.length > 0 || icp.keywords.length > 0 || Object.values(icp.prefer ?? {}).some(Boolean)) && (
+            <button
+              className="mt-1 text-[12px] text-muted underline underline-offset-2 hover:text-ink"
+              onClick={() => setIcp((s) => ({ ...s, industries: [], keywords: [], prefer: { familyOwned: false, ownerOperated: false, directContact: false } }))}
+            >
+              Reset to neutral
+            </button>
+          )}
         </div>
         <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-muted hover:bg-hover hover:text-ink">
           <X size={18} />
@@ -98,6 +106,40 @@ export function BuyBoxSheet({
             className="w-full"
           />
           <div className="mt-1 flex justify-between text-[11px] text-muted"><span>0</span><span>20</span><span>40</span></div>
+        </section>
+
+        <section>
+          <h3 className="mb-1 text-[13px] font-medium">Preferred characteristics</h3>
+          <p className="mb-3 text-[13px] text-muted">Each one you select becomes part of the buy-box score.</p>
+          <div className="space-y-1.5">
+            {([
+              ["familyOwned", "Family-owned", "Site states family ownership"],
+              ["ownerOperated", "Owner-operated", "Owner-run, or an owner/founder is named"],
+              ["directContact", "Direct contact", "A named inbox, not just info@"],
+            ] as const).map(([key, label, hint]) => {
+              const on = icp.prefer?.[key] ?? false;
+              return (
+                <button
+                  key={key}
+                  role="switch"
+                  aria-checked={on}
+                  onClick={() => setIcp((s) => ({ ...s, prefer: { ...s.prefer, [key]: !on } }))}
+                  className={cx(
+                    "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    on ? "border-ink bg-subtle" : "border-line hover:border-line-strong",
+                  )}
+                >
+                  <span>
+                    <span className="block text-[13px] font-medium">{label}</span>
+                    <span className="block text-[12px] text-muted">{hint}</span>
+                  </span>
+                  <span className={cx("relative h-5 w-9 shrink-0 rounded-full transition-colors", on ? "bg-ink" : "bg-line-strong")}>
+                    <span className={cx("absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow transition-all", on ? "left-[18px]" : "left-0.5")} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         <section>

@@ -1,100 +1,191 @@
-# LeadScout: acquisition-fit lead scoring for SaaSquatch
+# LeadScout: acquisition-fit intelligence for SaaSquatch leads
 
-SaaSquatch Leads is good at *finding* companies. LeadScout answers the next question a searcher or PE buyer has: **which of these should I call first?**
+SaaSquatch Leads helps you **find** companies. LeadScout answers the next question:
 
-Drop in a SaaSquatch CSV export (or paste domains). LeadScout politely crawls each company's public website, extracts and verifies contacts, detects ownership and maturity signals, and ranks every lead with a transparent 0–100 **acquisition-fit score**. One click exports the ranked list to CSV or a HubSpot-ready import, and an optional AI brief drafts an acquisition thesis plus a personalised owner email.
+> *Which of these companies should an acquisition entrepreneur or PE buyer investigate and contact first?*
 
-> Approach: **Quality First.** Rather than bolting on many small tools, this enhances the one step that decides whether scraped leads turn into conversations: qualification.
+Drop in a SaaSquatch CSV export (or paste domains). LeadScout reads each company's public website, extracts facts **with the evidence behind them**, verifies contact routes, and ranks every lead with a transparent 0–100 acquisition-fit score. You can tune it to your buy-box, see exactly why each lead scored what it did, get a recommended next step, and export a prioritised list to CSV or HubSpot.
 
-## Why this feature
+It is an **acquisition decision-support layer**, not another scraper: every number is explained, every fact is sourced, and anything unknown is shown as *Unknown*.
 
-Caprae's thesis is acquiring established, owner-operated businesses and creating value post-acquisition through operations and AI. A raw lead list doesn't reflect that thesis. A plumbing company founded in 1978 with a family owner and a 2016-era website is a far better target than a 2-year-old VC-backed startup, even if both have an email address. LeadScout encodes that judgement so a searcher spends their time on the top 20% of a list.
+**Who it's for:** searchers (ETA), independent sponsors and lower-middle-market PE teams qualifying owner-operated small businesses.
 
-## Features
+## Why this approach
 
-| Area | What it does |
+Caprae acquires established, owner-operated businesses and creates value through operations and AI. A raw lead list doesn't reflect that thesis: a 1975 family plumbing company with an owner's email and a 2016-era website is a far better first call than a two-year-old startup with an info@ inbox. LeadScout encodes that judgement, shows its working, and stays honest about what a public website can and cannot prove.
+
+The handbook offered *Quality First* or *Quantity Driven*. LeadScout is **Quality First**: it makes qualification excellent, because that's the step that decides whether scraped leads turn into conversations.
+
+## Feature status
+
+| Feature | Status |
 |---|---|
-| **Import** | CSV upload (auto-detects website/domain/email and company-name columns) or paste. URLs, `www.`, paths and emails are normalised to a domain; duplicates are merged and invalid rows reported. |
-| **Enrichment** | Crawls the homepage plus up to 3 high-signal pages (contact / about / team / our-story). Extracts emails (mailto + text + JSON-LD), phones, decision-makers (founder/owner/CEO patterns + schema.org), socials, founding year, location, industry, tech stack, and signals (family-owned, owner-operated, hiring, e-commerce, online booking). |
-| **Validation** | Email syntax + junk filtering (retina images, vendor/placeholder domains), **MX lookup** per domain, role-inbox vs direct-person detection, on-domain check. Phones normalised to E.164 and deduped; fictional/invalid NANP numbers dropped. |
-| **Scoring** | Rule-based and explainable, so every point has a reason shown in the UI: Reachability 35 · Acquisition fit 40 · Buy-box (ICP) match 15 · Data confidence 10 → tiers A/B/C/D. |
-| **Buy-box** | Pick target industries, keywords and minimum years in business. Scores recompute **instantly in the browser** without re-crawling. |
-| **Workflow** | Filter by tier, min score, has email / phone, search; sort by score, name, age. Export the filtered view to CSV or **HubSpot import format**. |
-| **AI brief** (optional) | On demand per lead: summary, acquisition thesis, diligence questions, 1–10 fit rating and a personalised outreach email, via Claude with structured output. Without an API key, a template email is built from scraped facts. |
-| **Ethics** | Public company websites only (no LinkedIn scraping), honours `robots.txt`, identifies itself with a bot user-agent, 4 pages max per site, results cached 7 days to avoid re-crawling. |
+| CSV upload, drag-and-drop, paste; column auto-detection | ✅ Implemented |
+| URL / www / path / email normalisation, dedupe, invalid-row and duplicate reporting | ✅ Implemented |
+| Sample dataset | ✅ Implemented |
+| Polite crawl: homepage + up to 3 About/Contact/Team/Story pages, robots.txt, timeouts, size caps, 4 concurrent | ✅ Implemented |
+| Evidence per fact (source page, quoted snippet, structured / stated / inferred, confidence) | ✅ Implemented |
+| Email syntax + domain MX check; role vs named inbox; phone normalisation | ✅ Implemented |
+| Deterministic, explainable scoring with caveats; weights in one config | ✅ Implemented |
+| Buy-box: industries, keywords, min years, preferred characteristics; instant client-side re-rank | ✅ Implemented |
+| Next-action recommendations per lead | ✅ Implemented |
+| Search, tier tabs, industry and min-score filters, email/phone toggles, sorting | ✅ Implemented |
+| CSV export (filtered view) and HubSpot-format CSV | ✅ Implemented |
+| SSRF hardening (DNS-pinned private-IP blocking, per-hop redirect checks, port allow-list) | ✅ Implemented |
+| Zod validation on all API inputs | ✅ Implemented |
+| Automated tests (57) | ✅ Implemented |
+| AI acquisition brief (Claude, structured output) | ⚙️ Optional: needs `ANTHROPIC_API_KEY` |
+| Durable enrichment cache in production (Turso) | ⚙️ Optional: needs `TURSO_DATABASE_URL` |
+| Mailbox-level (SMTP) email verification | ❌ Not supported: MX checks the domain only |
+| JavaScript-rendered sites (headless browser) | ❌ Not supported: flagged as "thin content" |
+| Direct HubSpot API push, revenue/headcount estimates | ❌ Not supported (see Future work) |
+
+## How it works
+
+### 1. Import
+CSV or pasted text is parsed with PapaParse. A first row is treated as a header only if it names a website/domain/email column **and** doesn't itself look like a domain, so a plain list keeps its first row. Values are normalised (`https://www.Acme.com/about` → `acme.com`, `owner@acme.com` → `acme.com`) and deduplicated. Users see "*7 added · 1 duplicate merged · 1 invalid skipped*". Unsupported file types, empty files and files over 5 MB get a clear message.
+
+### 2. Enrichment with evidence
+For each domain, the server fetches `robots.txt`, the homepage, and up to three same-site pages likely to hold ownership/contact details. Extraction prefers **schema.org JSON-LD** (the site's own structured data) and falls back to explicit wording, then heuristics. Every key fact carries:
+
+| Field | Meaning |
+|---|---|
+| `method` | `structured` (schema.org), `stated` (explicit page text), or `inferred` (heuristic) |
+| `confidence` | `high` / `medium` / `low` |
+| `source` | the page URL |
+| `snippet` | the quoted text that supports it |
+
+Examples of deliberate restraint, each covered by tests:
+
+- "*for 25 years*" is ignored, because it usually describes a person's tenure. "*over 30 years*" yields a **low-confidence inferred** estimate.
+- "*the 4th generation visited*" (a customer review) is **not** family ownership; "*third-generation family business*" is.
+- A name matched from page text is marked inferred, and template emails only greet by name when the site published it in structured data.
+- Sites with almost no server-rendered text are flagged `thinContent`, so missing data is shown as *possibly missing*, not *absent*.
+
+### 3. Scoring (`src/lib/score.ts`)
+`scoreLead(enrichment, buyBox)` is a pure, deterministic function. All weights live in the `SCORING` object.
+
+| Component | Max | What earns points |
+|---|---:|---|
+| Reachability | 35 | Mail-ready email domain (12), named inbox (8), phone (8), decision-maker named (4), LinkedIn (3) |
+| Acquisition fit | 40 | Years in business (up to 15; ×0.8 if inferred; unknown = neutral 5), ownership stated (10) or inferred (6), long tenure under that ownership (5), observed website levers: stale footer, no marketing automation, DIY builder or no online booking (up to 10) |
+| Buy-box match | 15 | Configured criteria share the 15 points: industry (7), keywords (4), preferred characteristics (4). Neutral 8 when nothing is configured; −5 if below minimum years |
+| Data confidence | 10 | 8 key facts, each weighted by evidence quality (high 1, medium 0.75, low 0.4) |
+
+Tiers: **A** 70–100 · **B** 50–69 · **C** 30–49 · **D** < 30.
+
+Every component returns **reasons** and **caveats**, shown in the UI and in exports. The caveats state, for example, that MX doesn't verify a mailbox, that long tenure isn't evidence of intent to sell, and that website observations suggest but don't prove upside. **The score is heuristic acquisition fit, not a probability of a deal or of willingness to sell.**
+
+### 4. Next actions
+`nextActions()` turns gaps and signals into concrete steps, for example *Find a contact route*, *Identify the owner*, *Confirm founding year*, *Verify ownership structure*, *Explore succession plans* or *Prioritise outreach*. Each comes with a one-line reason.
+
+### 5. Workspace
+Tier tabs with counts, email/phone toggles, a Filters menu (industry, minimum score), search and sortable columns. The detail panel shows the score, next steps, **Key facts with quoted evidence**, the score breakdown with caveats, contacts, and website signals, plus Outreach (AI brief or template email) and Sources tabs.
+
+### 6. Export
+The **current filtered view** exports to CSV with company, domain, score, tier, each component, industry/founded/ownership **with their evidence labels and source snippet**, contacts, decision-maker, next action, reasons and caveats. A HubSpot-format CSV uses HubSpot's import property names. Values are escaped by PapaParse, cells beginning with `= + - @` are neutralised against spreadsheet formula injection, and a UTF-8 BOM keeps Excel happy.
+
+### 7. Optional AI brief
+On click, `/api/brief` sends the lead's facts, evidence and score to Claude and gets back a Zod-validated JSON brief: summary, evidence-supported thesis, improvement opportunities, diligence questions, uncertainties, a 1–10 fit rating and a short owner email. The prompt requires separating evidence from hypotheses, writing "Unknown" for missing data, and never inventing names, financials or intent to sell. The model defaults to `claude-opus-5-5` (override with `ANTHROPIC_MODEL`); a server-side refusal fallback is enabled for models that support it. Without a key the app is fully functional and uses a deterministic template email.
 
 ## Architecture
 
 ```
-Browser (Next.js client)                      Server (Next.js route handlers, Node runtime)
-┌────────────────────────────┐   POST /api/enrich {domain}   ┌──────────────────────────────────┐
-│ CSV parse + dedupe          │ ────────────────────────────▶ │ cache lookup (libSQL, 7-day TTL) │
-│ worker pool (4 concurrent)  │                               │ robots.txt → fetch ≤4 pages       │
-│ scoreLead() — pure, instant │ ◀──────────────────────────── │ SSRF guard on every hop           │
-│ filters / sort / export     │        Enrichment JSON        │ extract → validate (DNS MX)       │
-│ localStorage session        │                               └──────────────────────────────────┘
-│                             │   POST /api/brief             ┌──────────────────────────────────┐
-│ "Generate AI brief"         │ ────────────────────────────▶ │ Claude (structured JSON output)   │
-└────────────────────────────┘                               └──────────────────────────────────┘
+Browser (Next.js client)                         Server (route handlers, Node.js runtime)
+┌──────────────────────────────┐ POST /api/enrich ┌───────────────────────────────────────┐
+│ parseImport → dedupeInputs    │ ───────────────▶ │ Zod validate → normalise domain        │
+│ worker pool (4 concurrent)    │                  │ cache lookup (libSQL, 7-day TTL)       │
+│ scoreLead() + nextActions()   │ ◀─────────────── │ robots.txt → safeFetch ≤4 pages        │
+│   pure, instant re-rank       │  Enrichment+evid │   (DNS-pinned SSRF guard, caps)        │
+│ filters / sort / export       │                  │ analyzePages() → evidence per fact     │
+│ localStorage session          │                  │ validateEmails() (memoised MX)         │
+│                               │ POST /api/brief  ├───────────────────────────────────────┤
+│ "Generate brief" (optional)   │ ───────────────▶ │ Zod validate → Claude structured output│
+└──────────────────────────────┘                  └───────────────────────────────────────┘
 ```
 
-- **Stack:** Next.js 15 (App Router) + React 19 + TypeScript, Tailwind CSS v4, Cheerio (HTML parsing), PapaParse (CSV), `@libsql/client` (SQLite / Turso), `@anthropic-ai/sdk` + Zod (AI brief).
-- **One domain per request.** The client runs a 4-wide worker pool, so the table fills in live and each serverless invocation stays short (well under the 30s limit), with no long-running job queue to operate.
-- **Scoring runs client-side.** `scoreLead()` is a pure function shared by client and server, so changing the buy-box re-ranks hundreds of leads instantly with zero network calls.
-- **Data storage & caching:** enrichment results are cached by domain in libSQL: a local `leadscout.db` SQLite file in development, a hosted **Turso** database in production (`TURSO_DATABASE_URL`). If no database is reachable (e.g. read-only serverless filesystem), it degrades to an in-memory cache. MX lookups are memoised per domain. The working lead list lives in the browser (`localStorage`) so a session survives reloads.
-- **Performance:** per-page 8s timeout, 1.5MB response cap, sub-pages fetched in parallel, cached domains return in milliseconds.
-- **Security:** user input drives server-side fetches, so every request (including each redirect hop, followed manually) resolves DNS and refuses private/loopback/link-local ranges (SSRF protection). Only `http(s)` is allowed.
-- **Hosting:** serverless on **Vercel** (static dashboard + Node.js functions), with Turso as the managed database and Anthropic for AI. No servers to manage; the cost is near zero at idle.
+| Module | Responsibility |
+|---|---|
+| `src/lib/normalize.ts` | Import parsing, domain normalisation, dedupe, column detection |
+| `src/lib/http.ts` | SSRF-hardened GET: DNS-pinned IP checks, redirects, timeouts, size cap, decompression |
+| `src/lib/scraper.ts` | robots.txt, page parsing, `analyzePages()` evidence extraction, orchestration |
+| `src/lib/validate.ts` | Email plausibility, MX readiness, role inbox detection, phone normalisation |
+| `src/lib/score.ts` | `SCORING` config, `scoreLead()`, `nextActions()` (no I/O) |
+| `src/lib/export.ts` | `buildCsv()` / `buildHubspotCsv()` (pure), download, template email |
+| `src/lib/schemas.ts` | Zod request schemas |
+| `src/lib/db.ts` | libSQL cache with schema versioning and in-memory fallback |
+| `src/lib/ai.ts` | Optional Claude brief |
 
-### AI design
+**Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Cheerio · PapaParse · Zod · `@libsql/client` · `@anthropic-ai/sdk` · Vitest.
 
-- Model: `claude-opus-5-5` with `effort: "low"` (a short, grounded writing task) and **structured outputs** via a Zod schema, so the UI never parses free text.
-- Server-side refusal fallback is enabled (`fallbacks: "default"`), so a declined request is retried on a fallback model automatically.
-- Runs **only when the user clicks**, so spend tracks the leads someone actually cares about (the same philosophy as SaaSquatch's "only enrich what you want" credits).
-- The prompt is grounded in scraped data and instructed to say "unknown" rather than invent facts; the email never mentions scraping or scores.
+### Storage and caching
+- **Working list:** browser `localStorage`, so a session survives reloads. It isn't shared across devices by design.
+- **Enrichment cache:** keyed by normalised domain with a 7-day TTL. Local dev uses a SQLite file (`leadscout.db`); production should set `TURSO_DATABASE_URL`. Entries carry a schema `version`, so changes to extraction logic invalidate stale cache entries and saved browser data automatically.
+- **Fallback:** if no database is reachable (e.g. a read-only serverless filesystem), the cache degrades to in-memory, which is **not durable** across serverless invocations. The app still works; it just re-crawls more often.
+- MX lookups are memoised per domain per server instance.
 
-## Getting started
+### Security
+- Only `http`/`https`, ports 80/443, no credentials in URLs; `localhost`, `*.local` and `*.internal` are rejected.
+- Private, loopback, link-local, CGNAT, multicast and IPv4-mapped IPv6 ranges are blocked. The check runs **inside the socket's DNS lookup**, so the validated IP is the connected IP. That closes the DNS-rebinding gap of a separate "resolve then fetch" check (verified against `localtest.me`, a public name that resolves to 127.0.0.1).
+- Redirects are followed manually (max 4) and every hop is re-validated.
+- 8s timeout and 1.5 MB cap per response; 4 concurrent domains; ≤4 pages per site.
+- All API input is validated with Zod and size-limited (client data reaches the AI prompt).
+- API keys stay server-side; no contact data is logged.
+- No LinkedIn scraping; no bypassing of logins, CAPTCHAs, paywalls or robots.txt.
+
+## Setup
 
 Requires Node.js 20+.
 
 ```bash
 npm install
-cp .env.example .env.local   # optional: add ANTHROPIC_API_KEY for AI briefs
-npm run dev
+cp .env.example .env.local   # all variables are optional
+npm run dev                  # http://localhost:3000, then click "Try sample"
 ```
-
-Open http://localhost:3000 and click **Try the sample dataset**.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | No | Enables AI briefs and personalised emails. Without it the app is rules-only. |
-| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | No | Hosted cache for production. Defaults to local `leadscout.db`. |
+| `ANTHROPIC_API_KEY` | No | Enables AI briefs |
+| `ANTHROPIC_MODEL` | No | Model for briefs (default `claude-opus-5-5`) |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | No | Durable production cache |
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server (Turbopack) |
+| `npm test` | Vitest suite (57 tests, no network needed) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run build` / `npm start` | Production build / serve |
+
+### Tests
+`tests/` covers normalisation, dedupe and import parsing (including malformed CSV); scoring (weights sum to 100, tier thresholds, determinism, neutral buy-box, re-ranking, preferences, inferred-year discount, caveats, JS-only sites, legacy settings); next actions; CSV escaping, formula-injection neutralisation and HubSpot mapping; evidence extraction from fixture HTML (structured vs stated vs inferred, unknowns stay empty, false-positive guards); robots.txt precedence; contact validation; and the SSRF guard.
 
 ### Deploy (Vercel)
-
 ```bash
 npx vercel --prod
 ```
-
-Set `ANTHROPIC_API_KEY` (and optionally the Turso variables) in the Vercel project settings.
+Set the optional environment variables in the Vercel project. The two API routes run on the Node.js runtime (`maxDuration` 30s / 60s).
 
 ## Dataset
+`public/sample-leads.csv` mimics a SaaSquatch export: real, long-established brands with public websites, plus a duplicate and an invalid row to demonstrate dedupe and validation.
 
-`public/sample-leads.csv` mimics a SaaSquatch export: real, long-established consumer brands with public websites, plus a duplicate row and an invalid row to demonstrate deduplication and validation. Any CSV with a website, domain or email column works.
+## Known limitations
+- Extraction is heuristic. Evidence labels and snippets exist so a person can check any fact in seconds, but some facts will still be wrong or missing.
+- JavaScript-only sites yield little data (flagged in the UI).
+- MX readiness doesn't prove a mailbox exists.
+- Industry classification is keyword-based unless the site publishes a schema.org type.
+- In-memory cache fallback is not durable on serverless without Turso.
 
-## Scoring reference
+## Future work
+SMTP-level mailbox verification · headless-browser fallback for JS sites · revenue/headcount estimation from public signals · direct HubSpot API push · batch AI briefs via the Message Batches API · shared team workspaces.
 
-| Component | Max | Signals |
-|---|---|---|
-| Reachability | 35 | Email on an MX-valid domain (12), direct named inbox (8), phone (8), decision-maker identified (4), LinkedIn (3) |
-| Acquisition fit | 40 | Years in business (up to 15), family-owned / owner-operated (10), long-tenured owner → succession (5), digital upside: dated site, no marketing automation, DIY builder / no online booking (up to 10) |
-| Buy-box match | 15 | Target industry (10), keyword match (5), −5 if below minimum years. Neutral 8 when no buy-box is set |
-| Data confidence | 10 | Share of 8 profile fields found |
-
-Tiers: **A** ≥ 70 (priority) · **B** ≥ 50 · **C** ≥ 30 · **D** < 30.
-
-## Limitations & next steps
-
-- Heuristic extraction: names, founding years and industries come from patterns and schema.org, so they can be wrong on unusual sites. The score breakdown shows its evidence so a human can sanity-check quickly.
-- JavaScript-only sites (no server-rendered HTML) yield little data; a headless-browser fallback would help.
-- Next: SMTP-level mailbox verification, revenue/employee estimates, a direct HubSpot API push, and batch AI briefs via the Message Batches API at 50% cost.
+## Demo checklist (≈2 minutes)
+1. Click **Try sample**: the toast reports duplicates merged and invalid rows skipped.
+2. Watch rows enrich live (progress bar, skeletons), then a ranked list appears.
+3. Open the top lead: score, **Next steps**, **Key facts with quoted evidence**, caveats.
+4. Open **Buy-box**, pick an industry and "Family-owned": the ranking changes instantly.
+5. Use the tier tabs and **Filters** (industry, min score) together.
+6. **Export → Spreadsheet**: the file contains exactly the filtered leads with evidence and next actions.
+7. Outreach tab: template email (or the AI brief with a key).
