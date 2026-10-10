@@ -17,7 +17,8 @@ function init(): Promise<boolean> {
     ready = (async () => {
       try {
         client = createClient({
-          url: process.env.TURSO_DATABASE_URL ?? "file:leadscout.db",
+          // Vercel functions can only write to /tmp; that cache lives per instance.
+          url: process.env.TURSO_DATABASE_URL ?? (process.env.VERCEL ? "file:/tmp/leadscout.db" : "file:leadscout.db"),
           authToken: process.env.TURSO_AUTH_TOKEN,
         });
         await client.execute(
