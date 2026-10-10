@@ -33,7 +33,7 @@ The handbook offered *Quality First* or *Quantity Driven*. LeadScout is **Qualit
 | CSV export (filtered view) and HubSpot-format CSV | ✅ Implemented |
 | SSRF hardening (DNS-pinned private-IP blocking, per-hop redirect checks, port allow-list) | ✅ Implemented |
 | Zod validation on all API inputs | ✅ Implemented |
-| Automated tests (60) | ✅ Implemented |
+| Automated tests (65) | ✅ Implemented |
 | AI acquisition brief (Gemini or Claude, structured output) | ⚙️ Optional: needs `GEMINI_API_KEY` (free tier) or `ANTHROPIC_API_KEY` |
 | Durable enrichment cache in production (Turso) | ⚙️ Optional: needs `TURSO_DATABASE_URL` |
 | Mailbox-level (SMTP) email verification | ❌ Not supported: MX checks the domain only |
@@ -174,7 +174,7 @@ npm run dev                  # http://localhost:3000, then click "Try sample"
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server (Turbopack) |
-| `npm test` | Vitest suite (60 tests, no network needed) |
+| `npm test` | Vitest suite (65 tests, no network needed) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run build` / `npm start` | Production build / serve |
