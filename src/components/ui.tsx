@@ -1,11 +1,13 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LeadScore } from "@/lib/types";
 
 export const TIER_COLOR: Record<LeadScore["tier"], string> = {
-  A: "var(--tier-a)",
-  B: "var(--tier-b)",
-  C: "var(--tier-c)",
-  D: "var(--tier-d)",
+  A: "var(--a)",
+  B: "var(--b)",
+  C: "var(--c)",
+  D: "var(--d)",
 };
 
 export const TIER_LABEL: Record<LeadScore["tier"], string> = {
@@ -15,107 +17,189 @@ export const TIER_LABEL: Record<LeadScore["tier"], string> = {
   D: "Low fit",
 };
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-line bg-panel ${className}`}>{children}</section>;
+export function cx(...c: (string | false | null | undefined)[]) {
+  return c.filter(Boolean).join(" ");
 }
 
-export function SectionTitle({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-2">
-      <h2 className="text-[13px] font-semibold uppercase tracking-wide text-muted">{children}</h2>
-      {hint && <span className="text-xs text-muted">{hint}</span>}
-    </div>
-  );
-}
-
-export function TierPill({ tier }: { tier: LeadScore["tier"] }) {
-  return (
-    <span
-      className="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-[11px] font-bold text-white"
-      style={{ background: TIER_COLOR[tier] }}
-      title={TIER_LABEL[tier]}
-    >
-      {tier}
-    </span>
-  );
-}
-
-export function ScoreBar({ score }: { score: LeadScore }) {
-  return (
-    <div className="flex items-center gap-2">
-      <TierPill tier={score.tier} />
-      <span className="w-7 text-right font-mono text-sm font-semibold tabular-nums">{score.total}</span>
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-panel-2">
-        <div className="h-full rounded-full" style={{ width: `${score.total}%`, background: TIER_COLOR[score.tier] }} />
-      </div>
-    </div>
-  );
-}
-
-export function ScoreRing({ score, size = 76 }: { score: LeadScore; size?: number }) {
-  const r = (size - 10) / 2;
-  const c = 2 * Math.PI * r;
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--panel-2)" strokeWidth={8} />
-        <circle
-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={TIER_COLOR[score.tier]} strokeWidth={8}
-          strokeDasharray={c} strokeDashoffset={c * (1 - score.total / 100)} strokeLinecap="round"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl font-bold tabular-nums leading-none">{score.total}</span>
-        <span className="mt-0.5 text-[10px] font-medium uppercase text-muted">Tier {score.tier}</span>
-      </div>
-    </div>
-  );
-}
-
-export function Chip({ children, tone = "neutral", title }: { children: ReactNode; tone?: "neutral" | "accent" | "warn"; title?: string }) {
-  const cls =
-    tone === "accent"
-      ? "bg-accent-soft text-accent"
-      : tone === "warn"
-        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-        : "bg-panel-2 text-muted";
-  return (
-    <span title={title} className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>
-      {children}
-    </span>
-  );
-}
-
-export function Button({
-  children, onClick, variant = "secondary", disabled, className = "", title, type = "button",
-}: {
+type BtnProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
   disabled?: boolean;
   className?: string;
   title?: string;
   type?: "button" | "submit";
-}) {
-  const base = "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-  const styles = {
-    primary: "bg-accent text-white hover:brightness-110 dark:text-black",
-    secondary: "border border-line bg-panel hover:bg-panel-2",
-    ghost: "hover:bg-panel-2 text-muted hover:text-ink",
-  }[variant];
+};
+
+export function Button({ children, onClick, variant = "outline", size = "md", disabled, className, title, type = "button" }: BtnProps) {
   return (
-    <button type={type} title={title} onClick={onClick} disabled={disabled} className={`${base} ${styles} ${className}`}>
+    <button
+      type={type}
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(
+        "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:pointer-events-none disabled:opacity-40",
+        "active:scale-[0.98]",
+        size === "sm" && "h-8 px-2.5 text-[13px]",
+        size === "md" && "h-9 px-3.5 text-sm",
+        size === "lg" && "h-11 px-5 text-[15px]",
+        variant === "primary" && "bg-accent text-accent-ink hover:opacity-90",
+        variant === "outline" && "border border-line-strong bg-surface text-ink hover:bg-hover",
+        variant === "ghost" && "text-ink-2 hover:bg-hover hover:text-ink",
+        className,
+      )}
+    >
       {children}
     </button>
   );
 }
 
-export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <Card className="px-4 py-3">
-      <div className="text-xs text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
-    </Card>
+    <kbd className="rounded border border-current/20 px-1 font-sans text-[10px] font-medium leading-4 opacity-60">
+      {children}
+    </kbd>
+  );
+}
+
+export function ScoreRing({ score, size = 32, stroke = 3, showLabel = true }: { score: LeadScore; size?: number; stroke?: number; showLabel?: boolean }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }} title={`${TIER_LABEL[score.tier]} · ${score.total}/100`}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={TIER_COLOR[score.tier]} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={c * (1 - score.total / 100)} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.2,0.8,0.2,1)" }}
+        />
+      </svg>
+      {showLabel && (
+        <span className="absolute font-mono font-semibold tabular-nums" style={{ fontSize: size * 0.34 }}>
+          {score.total}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function Monogram({ name, size = 32 }: { name: string; size?: number }) {
+  const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+  // Stable, muted hue per company so the list has rhythm without noise.
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-lg font-semibold"
+      style={{
+        width: size, height: size, fontSize: size * 0.42,
+        background: `color-mix(in oklch, oklch(0.7 0.08 ${h}) 16%, var(--surface))`,
+        color: `color-mix(in oklch, oklch(0.5 0.1 ${h}) 85%, var(--ink))`,
+      }}
+    >
+      {letter}
+    </div>
+  );
+}
+
+export function TierDot({ tier }: { tier: LeadScore["tier"] }) {
+  return <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TIER_COLOR[tier] }} />;
+}
+
+export function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] transition-colors",
+        on ? "border-ink bg-ink text-bg" : "border-line-strong text-ink-2 hover:bg-hover",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Minimal click-outside popover menu. */
+export function Menu({ trigger, children, align = "right" }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: "left" | "right" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      {trigger(open, () => setOpen((o) => !o))}
+      {open && (
+        <div className={cx("anim-rise absolute top-full z-30 mt-1.5 min-w-52 rounded-xl border border-line bg-surface p-1 shadow-float", align === "right" ? "right-0" : "left-0")}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MenuItem({ children, onClick, hint, disabled }: { children: ReactNode; onClick: () => void; hint?: string; disabled?: boolean }) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink hover:bg-hover disabled:opacity-40"
+    >
+      <span className="flex flex-1 items-center gap-2.5">{children}</span>
+      {hint && <span className="text-[11px] text-muted">{hint}</span>}
+    </button>
+  );
+}
+
+export function Sheet({ open, onClose, children, width = 520, label }: { open: boolean; onClose: () => void; children: ReactNode; width?: number; label: string }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} />
+      <aside
+        role="dialog"
+        aria-label={label}
+        className="anim-slide absolute inset-y-0 right-0 flex w-full flex-col border-l border-line bg-surface shadow-float"
+        style={{ maxWidth: width }}
+      >
+        {children}
+      </aside>
+    </div>
+  );
+}
+
+export function Modal({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: ReactNode; label: string }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center px-4 pt-[12vh]">
+      <div className="anim-fade absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/50" onClick={onClose} />
+      <div role="dialog" aria-label={label} className="anim-rise relative w-full max-w-xl">
+        {children}
+      </div>
+    </div>
   );
 }

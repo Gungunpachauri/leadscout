@@ -59,9 +59,9 @@ export function scoreLead(d: Enrichment, icp: IcpSettings, nowYear = new Date().
   if (upside) fit.reasons.push(`Digital upside: ${upsideReasons.join(", ")}`);
 
   // 3. ICP match (15): user-defined thesis.
-  const icpC: ScoreComponent = { key: "icp", label: "ICP match", points: 0, max: 15, reasons: [] };
+  const icpC: ScoreComponent = { key: "icp", label: "Buy-box match", points: 0, max: 15, reasons: [] };
   const hasIcp = icp.industries.length > 0 || icp.keywords.length > 0;
-  if (!hasIcp) { icpC.points = 8; icpC.reasons.push("No ICP set: neutral score"); }
+  if (!hasIcp) { icpC.points = 8; icpC.reasons.push("No buy-box set: neutral score"); }
   else {
     if (d.industry && icp.industries.includes(d.industry)) { icpC.points += 10; icpC.reasons.push(`Target industry: ${d.industry}`); }
     else if (icp.industries.length) icpC.reasons.push(d.industry ? `Industry ${d.industry} not in target list` : "Industry not detected");

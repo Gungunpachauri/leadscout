@@ -1,64 +1,116 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --panel-2: #f1f3f6;
-  --line: #e3e6eb;
-  --ink: #111827;
-  --muted: #6b7280;
-  --accent: #0f766e;
-  --accent-soft: #ccfbf1;
-  --tier-a: #047857;
-  --tier-b: #2563eb;
-  --tier-c: #b45309;
-  --tier-d: #9ca3af;
-  --danger: #b91c1c;
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --subtle: #f4f4f3;
+  --hover: #f0f0ee;
+  --line: #ebebea;
+  --line-strong: #dededc;
+  --ink: #0b0b0c;
+  --ink-2: #3f3f46;
+  --muted: #8a8a90;
+  --accent: #0b0b0c;
+  --accent-ink: #ffffff;
+  --a: #10b981;
+  --b: #3b82f6;
+  --c: #f59e0b;
+  --d: #c4c4c8;
+  --danger: #e5484d;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 24px 64px -16px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0f14;
-    --panel: #121820;
-    --panel-2: #18202a;
-    --line: #243040;
-    --ink: #e6ebf1;
-    --muted: #8b97a7;
-    --accent: #2dd4bf;
-    --accent-soft: #123a37;
-    --tier-a: #34d399;
-    --tier-b: #60a5fa;
-    --tier-c: #fbbf24;
-    --tier-d: #6b7280;
-    --danger: #f87171;
+    --bg: #09090a;
+    --surface: #111112;
+    --subtle: #18181a;
+    --hover: #1c1c1f;
+    --line: #222225;
+    --line-strong: #2e2e32;
+    --ink: #f4f4f5;
+    --ink-2: #c8c8cc;
+    --muted: #7c7c84;
+    --accent: #f4f4f5;
+    --accent-ink: #09090a;
+    --d: #45454b;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+    --shadow-lg: 0 24px 64px -16px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
   }
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-panel: var(--panel);
-  --color-panel-2: var(--panel-2);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-tier-a: var(--tier-a);
-  --color-tier-b: var(--tier-b);
-  --color-tier-c: var(--tier-c);
-  --color-tier-d: var(--tier-d);
+  --color-accent-ink: var(--accent-ink);
+  --color-tier-a: var(--a);
+  --color-tier-b: var(--b);
+  --color-tier-c: var(--c);
+  --color-tier-d: var(--d);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-soft: var(--shadow);
+  --shadow-float: var(--shadow-lg);
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
 input[type="range"] {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
+
+@keyframes slide-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.anim-slide { animation: slide-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.anim-fade { animation: fade-in 0.2s ease-out; }
+/* No fill-mode: if animations are paused or reduced, content stays visible. */
+.anim-rise { animation: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-slide, .anim-fade, .anim-rise, .skeleton { animation: none; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--subtle) 25%, var(--hover) 50%, var(--subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }
