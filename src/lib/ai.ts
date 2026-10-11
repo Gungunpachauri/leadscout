@@ -15,7 +15,7 @@ export type AiProvider = "anthropic" | "gemini";
 
 const DEFAULT_MODELS: Record<AiProvider, string> = {
   anthropic: "claude-opus-5-5",
-  gemini: "gemini-3.8-flash",
+  gemini: "gemini-3.5-flash-lite",
 };
 // Server-side refusal fallback ("default" routing) is only accepted by these Claude models.
 const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
