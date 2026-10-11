@@ -20,6 +20,9 @@ const DEFAULT_MODELS: Record<AiProvider, string> = {
 // Server-side refusal fallback ("default" routing) is only accepted by these Claude models.
 const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
+/** Must stay below the /api/brief route's maxDuration (60s). */
+const AI_TIMEOUT_MS = 45_000;
+
 const anthropicKey = () => process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
 const geminiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
@@ -157,7 +160,7 @@ export function buildPayload(
 }
 
 async function viaAnthropic(prompt: string, model: string): Promise<{ out: BriefOut; model: string }> {
-  const client = new Anthropic();
+  const client = new Anthropic({ timeout: AI_TIMEOUT_MS, maxRetries: 0 });
   const response = await client.beta.messages.parse({
     model,
     max_tokens: 4000,
@@ -181,14 +184,23 @@ async function viaGemini(prompt: string, model: string): Promise<{ out: BriefOut
   delete schema.$schema;
   let interaction;
   try {
-    interaction = await client.interactions.create({
-      model,
-      system_instruction: SYSTEM,
-      input: prompt,
-      response_format: { type: "text", mime_type: "application/json", schema },
-      store: false,
-    });
+    interaction = await client.interactions.create(
+      {
+        model,
+        system_instruction: SYSTEM,
+        input: prompt,
+        response_format: { type: "text", mime_type: "application/json", schema },
+        // A short, grounded brief needs little reasoning; low thinking keeps latency well under the function limit.
+        generation_config: { thinking_level: "low", max_output_tokens: 2500 },
+        store: false,
+      },
+      // Fail before the serverless platform's hard limit so the user gets a clear message instead of a crash.
+      { timeout: AI_TIMEOUT_MS, maxRetries: 0 },
+    );
   } catch (err) {
+    if (/timeout|timed out|abort/i.test(`${(err as Error).name} ${(err as Error).message}`)) {
+      throw new AiError("The AI took too long to respond. Please try again.", 504);
+    }
     const status = Number((err as { status?: number; code?: number }).status ?? (err as { code?: number }).code) || 502;
     const msg =
       status === 401 || status === 403

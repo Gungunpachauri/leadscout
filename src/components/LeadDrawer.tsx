@@ -123,8 +123,16 @@ export function LeadDrawer({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ data: d, icp, sender }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed");
+      // Platform errors (e.g. a gateway timeout) may not be JSON.
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          json.error ??
+            (res.status === 504
+              ? "The AI took too long to respond. Please try again."
+              : `Couldn't generate the brief (error ${res.status}). Please try again.`),
+        );
+      }
       onBrief(lead.domain, json.brief);
       setBrief({ loading: false });
     } catch (e) {

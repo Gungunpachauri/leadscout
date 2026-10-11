@@ -37,6 +37,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Configured ANTHROPIC_MODEL was not found." }, { status: 400 });
     } else if (err instanceof Anthropic.RateLimitError) {
       return NextResponse.json({ error: "Rate limited by the AI provider, try again shortly." }, { status: 429 });
+    } else if (err instanceof Anthropic.APIConnectionTimeoutError) {
+      return NextResponse.json({ error: "The AI took too long to respond. Please try again." }, { status: 504 });
     } else if (err instanceof Anthropic.APIError) {
       return NextResponse.json({ error: `AI provider error (${err.status}).` }, { status: 502 });
     }
